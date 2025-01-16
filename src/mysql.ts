@@ -26,11 +26,11 @@ export const depends: Dependencies = {
 	componentOf:            () => false,
 	ignoreTransformedValue: Symbol('ignoreTransformedValue'),
 	QueryFunction:          class {},
-	queryFunctionCall:      () => [undefined, '?'],
+	queryFunctionCall:      () => [undefined, ' = ?'],
 	storeOf:                () => false
 }
 
-export function dependsOn(dependencies: Partial<Dependencies>)
+export function dependsOn<QF extends object = object>(dependencies: Partial<Dependencies<QF>>)
 {
 	Object.assign(depends, dependencies)
 }
