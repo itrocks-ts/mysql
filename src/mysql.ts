@@ -8,7 +8,7 @@ import { Connection, createConnection }  from 'mariadb'
 
 export const DEBUG = false
 
-export interface Dependencies<QF extends object = object> {
+interface Dependencies<QF extends object = object> {
 	applyReadTransformer:   <T extends object>(object: T, property: KeyOf<T>, data: AnyObject) => any
 	applySaveTransformer:   <T extends object>(object: T, property: KeyOf<T>, data: AnyObject) => any
 	columnOf:               (property: string) => string,
@@ -19,7 +19,7 @@ export interface Dependencies<QF extends object = object> {
 	storeOf:                <T extends object>(target: ObjectOrType<T>) => string | false
 }
 
-export const depends: Dependencies = {
+const depends: Dependencies = {
 	applyReadTransformer:   value => value,
 	applySaveTransformer:   value => value,
 	columnOf:               name => name,
@@ -30,7 +30,7 @@ export const depends: Dependencies = {
 	storeOf:                () => false
 }
 
-export function dependsOn<QF extends object = object>(dependencies: Partial<Dependencies<QF>>)
+export function mysqlDependsOn<QF extends object = object>(dependencies: Partial<Dependencies<QF>>)
 {
 	Object.assign(depends, dependencies)
 }
