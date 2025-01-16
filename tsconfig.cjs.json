@@ -3,6 +3,5 @@
 		"module": "CommonJS",
 		"outDir": "./cjs"
 	},
-	"exclude": ["./src/esm.ts"],
 	"extends": "./tsconfig.json"
 }

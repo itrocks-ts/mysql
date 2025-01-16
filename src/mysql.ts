@@ -8,13 +8,14 @@ import { Connection, createConnection }  from 'mariadb'
 
 export const DEBUG = false
 
-export interface Dependencies {
+export interface Dependencies<QF extends object = object> {
 	applyReadTransformer:   <T extends object>(object: T, property: KeyOf<T>, data: AnyObject) => any
 	applySaveTransformer:   <T extends object>(object: T, property: KeyOf<T>, data: AnyObject) => any
 	columnOf:               (property: string) => string,
 	componentOf:            <T extends object>(target: T, property: KeyOf<T>) => boolean
 	ignoreTransformedValue: any
-	queryFunction:          (value: any) => [any, string]
+	QueryFunction:          Type<QF>,
+	queryFunctionCall:      (value: QF) => [any, string]
 	storeOf:                <T extends object>(target: ObjectOrType<T>) => string | false
 }
 
@@ -24,7 +25,8 @@ export const depends: Dependencies = {
 	columnOf:               name => name,
 	componentOf:            () => false,
 	ignoreTransformedValue: Symbol('ignoreTransformedValue'),
-	queryFunction:          value => [value, '?'],
+	QueryFunction:          class {},
+	queryFunctionCall:      () => [undefined, '?'],
 	storeOf:                () => false
 }
 
@@ -125,8 +127,8 @@ export default class Mysql extends DataSource
 		const sql = Object.entries(search)
 			.map(([name, value]) => {
 				let sql: string
-				if (value instanceof depends.queryFunction) {
-					[search[name], sql] = depends.queryFunction(value)
+				if (value instanceof depends.QueryFunction) {
+					[search[name], sql] = depends.queryFunctionCall(value)
 				}
 				else {
 					sql = ' = ?'
