@@ -1,0 +1,62 @@
+{
+	"author": {
+		"name": "Baptiste Pillot",
+		"email": "baptiste@pillot.fr"
+	},
+	"dependencies": {
+		"@itrocks/class-type": "latest",
+		"@itrocks/reflect": "latest",
+		"@itrocks/storage": "latest",
+		"mariadb": "^3.4",
+		"typescript": "~5.6"
+	},
+	"description": "Transforms model objects to and from mysql records",
+	"devDependencies": {
+		"@types/node": "^22.10"
+	},
+	"engines": {
+		"node": ">=18"
+	},
+	"exports": {
+		"import": "./esm/mysql.js",
+		"require": "./cjs/mysql.js"
+	},
+	"files": [
+		"LICENSE",
+		"README.md",
+		"*/*.d.ts",
+		"*/*.js",
+		"!*/esm.*"
+	],
+	"homepage": "https://it.rocks",
+	"keywords": [
+		"access",
+		"backend",
+		"CRUD",
+		"data",
+		"entity",
+		"it.rocks",
+		"layer",
+		"mapper",
+		"mapping",
+		"mysql",
+		"ORM",
+		"query",
+		"relational",
+		"source",
+		"storage"
+	],
+	"license": "LGPL-3.0-or-later",
+	"name": "@itrocks/mysql",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/itrocks-ts/mysql.git"
+	},
+	"scripts": {
+		"build": "npm run build:cjs && npm run build:esm",
+		"build:cjs": "tsc -p tsconfig.cjs.json",
+		"build:esm": "tsc -p tsconfig.esm.json && node esm/esm"
+	},
+	"types": "./esm/mysql.d.ts",
+	"version": "0.0.1"
+}
