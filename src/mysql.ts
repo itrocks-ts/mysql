@@ -1,16 +1,17 @@
-import { AnyObject, isAnyFunction }      from '@itrocks/class-type'
-import { KeyOf, ObjectOrType, Type }     from '@itrocks/class-type'
-import { ReflectClass, ReflectProperty } from '@itrocks/reflect'
-import { DataSource }                    from '@itrocks/storage'
-import { Entity, MayEntity }             from '@itrocks/storage'
-import { Identifier, SearchType }        from '@itrocks/storage'
-import { Connection, createConnection }  from 'mariadb'
+import { AnyObject, isAnyFunction }     from '@itrocks/class-type'
+import { KeyOf, ObjectOrType, Type }    from '@itrocks/class-type'
+import { typeOf }                       from '@itrocks/class-type'
+import { ReflectProperty }              from '@itrocks/reflect'
+import { DataSource }                   from '@itrocks/storage'
+import { Entity, MayEntity }            from '@itrocks/storage'
+import { Identifier, SearchType }       from '@itrocks/storage'
+import { Connection, createConnection } from 'mariadb'
 
 export const DEBUG = false
 
 interface Dependencies<QF extends object = object> {
-	applyReadTransformer:   <T extends object>(object: T, property: KeyOf<T>, data: AnyObject) => any
-	applySaveTransformer:   <T extends object>(object: T, property: KeyOf<T>, data: AnyObject) => any
+	applyReadTransformer:   <T extends object>(record: AnyObject, property: KeyOf<T>, object: T) => any
+	applySaveTransformer:   <T extends object>(object: T, property: KeyOf<T>, record: AnyObject) => any
 	columnOf:               (property: string) => string,
 	componentOf:            <T extends object>(target: T, property: KeyOf<T>) => boolean
 	ignoreTransformedValue: any
@@ -20,14 +21,14 @@ interface Dependencies<QF extends object = object> {
 }
 
 const depends: Dependencies = {
-	applyReadTransformer:   value => value,
-	applySaveTransformer:   value => value,
-	columnOf:               name => name,
+	applyReadTransformer:   (record, property) => record[property],
+	applySaveTransformer:   (object, property) => object[property],
+	columnOf:               name => name.toLowerCase(),
 	componentOf:            () => false,
 	ignoreTransformedValue: Symbol('ignoreTransformedValue'),
 	QueryFunction:          class {},
 	queryFunctionCall:      () => [undefined, ' = ?'],
-	storeOf:                () => false
+	storeOf:                target => typeOf(target).name.toLowerCase()
 }
 
 export function mysqlDependsOn<QF extends object = object>(dependencies: Partial<Dependencies<QF>>)
@@ -35,6 +36,7 @@ export function mysqlDependsOn<QF extends object = object>(dependencies: Partial
 	Object.assign(depends, dependencies)
 }
 
+export { Mysql }
 export default class Mysql extends DataSource
 {
 
@@ -234,8 +236,9 @@ export default class Mysql extends DataSource
 	{
 		const connection = this.connection ?? await this.connect()
 
+		Object.setPrototypeOf(search, type.prototype)
 		const sql      = this.propertiesToSearchSql(search)
-		const [values] = await this.valuesToDb(search, type)
+		const [values] = await this.valuesToDb(search)
 		if (DEBUG) console.log('SELECT * FROM `' + depends.storeOf(type) + '`' + sql, '[', values, ']')
 		const rows: Entity<T>[] = await connection.query(
 			'SELECT * FROM `' + depends.storeOf(type) + '`' + sql,
@@ -261,33 +264,32 @@ export default class Mysql extends DataSource
 		return object
 	}
 
-	async valuesFromDb<T extends object>(row: Entity<T>, type: Type<T>)
+	async valuesFromDb<T extends object>(record: Entity<T>, type: Type<T>)
 	{
 		const object = (new type) as Entity<T>
 		let property: KeyOf<Entity<T>>
-		for (property in row) {
-			const value = await depends.applyReadTransformer(object, property, row)
+		for (property in record) {
+			const value = await depends.applyReadTransformer(record, property, object)
 			if (value === depends.ignoreTransformedValue) continue
 			object[property] = value
 		}
 		return object
 	}
 
-	async valuesToDb<T extends object>(object: T, type?: Type<T>): Promise<[AnyObject, Function[]]>
+	async valuesToDb<T extends object>(object: T): Promise<[AnyObject, Function[]]>
 	{
-		const typeObject = type ? new type : object
 		const deferred: Function[] = []
-		const values:   AnyObject  = {}
-		for (const property of type ? Object.keys(object) as KeyOf<T>[] : new ReflectClass(object).propertyNames) {
-			const value = await depends.applySaveTransformer(typeObject, property, values)
+		const record:   AnyObject  = {}
+		for (const property of Object.keys(object) as KeyOf<T>[]) {
+			const value = await depends.applySaveTransformer(object, property, record)
 			if (value === depends.ignoreTransformedValue) continue
 			if (isAnyFunction(value)) {
 				deferred.push(value)
 				continue
 			}
-			values[property] = value
+			record[property] = value
 		}
-		return [values, deferred]
+		return [record, deferred]
 	}
 
 }
