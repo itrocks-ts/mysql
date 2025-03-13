@@ -272,6 +272,9 @@ export default class Mysql extends DataSource
 			const value = await depends.applyReadTransformer(record, property, object)
 			if (value === depends.ignoreTransformedValue) continue
 			object[property] = value
+			if (property.endsWith('_id')) {
+				delete (object as Record<string, any>)[property.slice(0, -3)]
+			}
 		}
 		return object
 	}
