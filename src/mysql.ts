@@ -36,8 +36,7 @@ export function mysqlDependsOn<QF extends object = object>(dependencies: Partial
 	Object.assign(depends, dependencies)
 }
 
-export { Mysql }
-export default class Mysql extends DataSource
+export class Mysql extends DataSource
 {
 
 	connection?: Connection
