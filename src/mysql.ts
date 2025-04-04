@@ -1,11 +1,19 @@
-import { AnyObject, isAnyFunction }     from '@itrocks/class-type'
-import { KeyOf, ObjectOrType, Type }    from '@itrocks/class-type'
-import { typeOf }                       from '@itrocks/class-type'
-import { ReflectProperty }              from '@itrocks/reflect'
-import { DataSource }                   from '@itrocks/storage'
-import { Entity, MayEntity }            from '@itrocks/storage'
-import { Identifier, SearchType }       from '@itrocks/storage'
-import { Connection, createConnection } from 'mariadb'
+import { AnyObject }        from '@itrocks/class-type'
+import { isAnyFunction }    from '@itrocks/class-type'
+import { isAnyType }        from '@itrocks/class-type'
+import { KeyOf }            from '@itrocks/class-type'
+import { ObjectOrType }     from '@itrocks/class-type'
+import { Type }             from '@itrocks/class-type'
+import { typeOf }           from '@itrocks/class-type'
+import { ReflectClass }     from '@itrocks/reflect'
+import { ReflectProperty }  from '@itrocks/reflect'
+import { DataSource }       from '@itrocks/storage'
+import { Entity }           from '@itrocks/storage'
+import { MayEntity }        from '@itrocks/storage'
+import { Identifier }       from '@itrocks/storage'
+import { SearchType }       from '@itrocks/storage'
+import { Connection }       from 'mariadb'
+import { createConnection } from 'mariadb'
 
 export const DEBUG = false
 
@@ -147,14 +155,32 @@ export class Mysql extends DataSource
 		return Object.keys(object).map(name => '`' + depends.columnOf(name) + '` = ?').join(', ')
 	}
 
+	propertiesToSqlSelect<T extends object>(type: Type<T>)
+	{
+		const sql = ['id']
+		for (const property of new ReflectClass(type).properties) {
+			const propertyType = property.type
+			const propertyName = (isAnyType(propertyType) && depends.storeOf(propertyType))
+				? property.name + 'Id'
+				: property.name
+			const columnName = depends.columnOf(propertyName)
+			sql.push(
+				(columnName.length !== propertyName.length)
+					? columnName + ' ' + propertyName
+					: propertyName
+			)
+		}
+		return sql.join(', ')
+	}
+
 	async read<T extends object>(type: Type<T>, id: Identifier)
 	{
-		const connection = this.connection ?? await this.connect()
+		const connection    = this.connection ?? await this.connect()
+		const propertiesSql = this.propertiesToSqlSelect(type)
 
-		if (DEBUG) console.log('SELECT * FROM `' + depends.storeOf(type) + '` WHERE id = ?', [id])
+		if (DEBUG) console.log('SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '` WHERE id = ?', [id])
 		const rows: Entity<T>[] = await connection.query(
-			'SELECT * FROM `' + depends.storeOf(type) + '` WHERE id = ?',
-			[id]
+			'SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '` WHERE id = ?', [id]
 		)
 
 		return this.valuesFromDb(rows[0], type)
@@ -165,18 +191,19 @@ export class Mysql extends DataSource
 		property: KeyOf<T>,
 		type = new ReflectProperty(object, property).collectionType.elementType as Type<PT>
 	) {
-		const connection = this.connection ?? await this.connect()
+		const connection    = this.connection ?? await this.connect()
+		const propertiesSql = this.propertiesToSqlSelect(type)
 
 		const objectTable = depends.storeOf(object)
 		const table       = depends.storeOf(type)
 
 		let query: string
 		if (depends.componentOf(object, property)) {
-			query = 'SELECT * FROM `' + table + '` WHERE ' + objectTable + '_id = ?'
+			query = 'SELECT ' + propertiesSql + ' FROM `' + table + '` WHERE ' + objectTable + '_id = ?'
 		}
 		else {
 			const joinTable = [objectTable, table].sort().join('_')
-			query = 'SELECT `' + table + '`.* FROM `' + table + '`'
+			query = 'SELECT `' + table + '`.' + propertiesSql + ' FROM `' + table + '`'
 				+ ' INNER JOIN `' + joinTable + '` ON `' + joinTable + '`.' + table + '_id = `' + table + '`.id'
 				+ ' WHERE `' + joinTable + '`.' + objectTable + '_id = ?'
 		}
@@ -212,13 +239,15 @@ export class Mysql extends DataSource
 	async readMultiple<T extends object>(type: Type<T>, ids: Identifier[])
 	{
 		if (!ids.length) return []
-		const connection = this.connection ?? await this.connect()
+		const connection    = this.connection ?? await this.connect()
+		const propertiesSql = this.propertiesToSqlSelect(type)
 
 		const questionMarks = Array(ids.length).fill('?').join(', ')
-		if (DEBUG) console.log('SELECT * FROM `' + depends.storeOf(type) + '` WHERE id IN (' + questionMarks + ')', ids)
+		if (DEBUG) console.log(
+			'SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '` WHERE id IN (' + questionMarks + ')', ids
+		)
 		const rows: Entity<T>[] = await connection.query(
-			'SELECT * FROM `' + depends.storeOf(type) + '` WHERE id IN (' + questionMarks + ')',
-			ids
+			'SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '` WHERE id IN (' + questionMarks + ')', ids
 		)
 
 		return Promise.all(rows.map(row => this.valuesFromDb(row, type)))
@@ -233,15 +262,15 @@ export class Mysql extends DataSource
 
 	async search<T extends object>(type: Type<T>, search: SearchType<T> = {}): Promise<Entity<T>[]>
 	{
-		const connection = this.connection ?? await this.connect()
+		const connection    = this.connection ?? await this.connect()
+		const propertiesSql = this.propertiesToSqlSelect(type)
 
 		Object.setPrototypeOf(search, type.prototype)
 		const sql      = this.propertiesToSearchSql(search)
 		const [values] = await this.valuesToDb(search)
-		if (DEBUG) console.log('SELECT * FROM `' + depends.storeOf(type) + '`' + sql, '[', values, ']')
+		if (DEBUG) console.log('SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '`' + sql, '[', values, ']')
 		const rows: Entity<T>[] = await connection.query(
-			'SELECT * FROM `' + depends.storeOf(type) + '`' + sql,
-			Object.values(values)
+			'SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '`' + sql, Object.values(values)
 		)
 
 		return Promise.all(rows.map(row => this.valuesFromDb(row, type)))
@@ -271,8 +300,8 @@ export class Mysql extends DataSource
 			const value = await depends.applyReadTransformer(record, property, object)
 			if (value === depends.ignoreTransformedValue) continue
 			object[property] = value
-			if (property.endsWith('_id')) {
-				delete (object as Record<string, any>)[property.slice(0, -3)]
+			if (property.endsWith('Id')) {
+				delete (object as Record<string, any>)[property.slice(0, -2)]
 			}
 		}
 		return object
@@ -289,7 +318,7 @@ export class Mysql extends DataSource
 				deferred.push(value)
 				continue
 			}
-			record[property] = value
+			record[depends.columnOf(property)] = value
 		}
 		return [record, deferred]
 	}
