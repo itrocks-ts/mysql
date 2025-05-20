@@ -14,6 +14,7 @@ import { Identifier }       from '@itrocks/storage'
 import { SearchType }       from '@itrocks/storage'
 import { Connection }       from 'mariadb'
 import { createConnection } from 'mariadb'
+import { UpsertResult }     from 'mariadb'
 
 export const DEBUG = false
 
@@ -104,7 +105,7 @@ export class Mysql extends DataSource
 		const sql   = this.propertiesToSql(values)
 		const query = 'INSERT INTO `' + depends.storeOf(object) + '` SET '  + sql
 		if (DEBUG) console.log(query, JSON.stringify(Object.values(values)))
-		const result = await connection.query(query, Object.values(values))
+		const result = await connection.query<UpsertResult>(query, Object.values(values))
 		const id     = result.insertId
 		const entity = this.connectObject(
 			object,
@@ -179,7 +180,7 @@ export class Mysql extends DataSource
 		const propertiesSql = this.propertiesToSqlSelect(type)
 
 		if (DEBUG) console.log('SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '` WHERE id = ?', [id])
-		const rows: Entity<T>[] = await connection.query(
+		const rows = await connection.query<Entity<T>[]>(
 			'SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '` WHERE id = ?', [id]
 		)
 
@@ -207,7 +208,7 @@ export class Mysql extends DataSource
 				+ ' INNER JOIN `' + joinTable + '` ON `' + joinTable + '`.' + table + '_id = `' + table + '`.id'
 				+ ' WHERE `' + joinTable + '`.' + objectTable + '_id = ?'
 		}
-		const rows: Entity<PT>[] = await connection.query(query, [object.id])
+		const rows = await connection.query<Entity<PT>[]>(query, [object.id])
 
 		return Promise.all(rows.map(row => this.valuesFromDb(row, type)))
 	}
@@ -231,12 +232,12 @@ export class Mysql extends DataSource
 			query = 'SELECT ' + propertyTable + '_id id FROM `' + joinTable + '`'
 				+ ' WHERE `' + joinTable + '`.' + objectTable + '_id = ?'
 		}
-		const rows: { id: Identifier }[] = await connection.query(query, [object.id])
+		const rows = await connection.query<Entity[]>(query, [object.id])
 
 		return Promise.all(rows.map(row => row.id))
 	}
 
-	async readMultiple<T extends object>(type: Type<T>, ids: Identifier[])
+	async readMultiple<T extends object>(type: Type<T>, ids: Identifier[]): Promise<Entity<T>[]>
 	{
 		if (!ids.length) return []
 		const connection    = this.connection ?? await this.connect()
@@ -246,7 +247,7 @@ export class Mysql extends DataSource
 		if (DEBUG) console.log(
 			'SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '` WHERE id IN (' + questionMarks + ')', ids
 		)
-		const rows: Entity<T>[] = await connection.query(
+		const rows = await connection.query<Entity<T>[]>(
 			'SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '` WHERE id IN (' + questionMarks + ')', ids
 		)
 
@@ -269,7 +270,7 @@ export class Mysql extends DataSource
 		const sql      = this.propertiesToSearchSql(search)
 		const [values] = await this.valuesToDb(search)
 		if (DEBUG) console.log('SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '`' + sql, '[', values, ']')
-		const rows: Entity<T>[] = await connection.query(
+		const rows = await connection.query<Entity<T>[]>(
 			'SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '`' + sql, Object.values(values)
 		)
 
