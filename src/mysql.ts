@@ -88,7 +88,7 @@ export class Mysql extends DataSource
 		const connection = this.connection ?? await this.connect()
 
 		const objectTable   = depends.storeOf(object)
-		const propertyTable = depends.storeOf(new ReflectProperty(object, property).collectionType.elementType as Type)
+		const propertyTable = depends.storeOf(new ReflectProperty(object, property).collectionType.elementType.type as Type)
 		const joinTable     = [objectTable, propertyTable].sort().join('_')
 
 		const query  = 'DELETE FROM `' + joinTable + '` WHERE ' + objectTable + '_id = ? AND ' + propertyTable + '_id = ?'
@@ -123,7 +123,7 @@ export class Mysql extends DataSource
 		const connection = this.connection ?? await this.connect()
 
 		const objectTable   = depends.storeOf(object)
-		const propertyTable = depends.storeOf(new ReflectProperty(object, property).collectionType.elementType as Type)
+		const propertyTable = depends.storeOf(new ReflectProperty(object, property).collectionType.elementType.type as Type)
 		const joinTable     = [objectTable, propertyTable].sort().join('_')
 
 		const query  = 'INSERT INTO `' + joinTable + '` SET ' + objectTable + '_id = ?, ' + propertyTable + '_id = ?'
@@ -190,7 +190,7 @@ export class Mysql extends DataSource
 	async readCollection<T extends object, PT extends object>(
 		object:   Entity<T>,
 		property: KeyOf<T>,
-		type = new ReflectProperty(object, property).collectionType.elementType as Type<PT>
+		type = new ReflectProperty(object, property).collectionType.elementType.type as Type<PT>
 	) {
 		const connection    = this.connection ?? await this.connect()
 		const propertiesSql = this.propertiesToSqlSelect(type)
@@ -216,7 +216,7 @@ export class Mysql extends DataSource
 	async readCollectionIds<T extends object, PT extends object>(
 		object:   Entity<T>,
 		property: KeyOf<T>,
-		type = new ReflectProperty(object, property).collectionType.elementType as Type<PT>
+		type = new ReflectProperty(object, property).collectionType.elementType.type as Type<PT>
 	) {
 		const connection = this.connection ?? await this.connect()
 
