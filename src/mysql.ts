@@ -5,6 +5,7 @@ import { KeyOf }            from '@itrocks/class-type'
 import { ObjectOrType }     from '@itrocks/class-type'
 import { Type }             from '@itrocks/class-type'
 import { typeOf }           from '@itrocks/class-type'
+import { CollectionType }   from '@itrocks/property-type'
 import { ReflectClass }     from '@itrocks/reflect'
 import { ReflectProperty }  from '@itrocks/reflect'
 import { DataSource }       from '@itrocks/storage'
@@ -161,7 +162,8 @@ export class Mysql extends DataSource
 		const sql = ['id']
 		for (const property of new ReflectClass(type).properties) {
 			const propertyType = property.type
-			const propertyName = (isAnyType(propertyType) && depends.storeOf(propertyType))
+			if (propertyType instanceof CollectionType) continue
+			const propertyName = (isAnyType(propertyType.type) && depends.storeOf(propertyType.type))
 				? property.name + 'Id'
 				: property.name
 			const columnName = depends.columnOf(propertyName)
