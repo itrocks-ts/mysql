@@ -41,6 +41,13 @@ const depends: Dependencies = {
 	storeOf:                target => typeOf(target).name.toLowerCase()
 }
 
+export function joinTableName(object1: string | ObjectOrType, object2: string | ObjectOrType)
+{
+	if (typeof object1 !== 'string') object1 = depends.storeOf(object1) as string
+	if (typeof object2 !== 'string') object2 = depends.storeOf(object2) as string
+	return [object1, object2].sort().join('_')
+}
+
 export function mysqlDependsOn<QF extends object = object>(dependencies: Partial<Dependencies<QF>>)
 {
 	Object.assign(depends, dependencies)
@@ -90,7 +97,10 @@ export class Mysql extends DataSource
 
 		const objectTable   = depends.storeOf(object)
 		const propertyTable = depends.storeOf(new ReflectProperty(object, property).collectionType.elementType.type as Type)
-		const joinTable     = [objectTable, propertyTable].sort().join('_')
+		if (!objectTable || !propertyTable) {
+			throw 'Collection objects are not stored'
+		}
+		const joinTable = joinTableName(objectTable, propertyTable)
 
 		const query  = 'DELETE FROM `' + joinTable + '` WHERE ' + objectTable + '_id = ? AND ' + propertyTable + '_id = ?'
 		const values = [object.id, id]
@@ -125,7 +135,10 @@ export class Mysql extends DataSource
 
 		const objectTable   = depends.storeOf(object)
 		const propertyTable = depends.storeOf(new ReflectProperty(object, property).collectionType.elementType.type as Type)
-		const joinTable     = [objectTable, propertyTable].sort().join('_')
+		if (!objectTable || !propertyTable) {
+			throw 'Collection objects are not stored'
+		}
+		const joinTable = joinTableName(objectTable, propertyTable)
 
 		const query  = 'INSERT INTO `' + joinTable + '` SET ' + objectTable + '_id = ?, ' + propertyTable + '_id = ?'
 		const values = [object.id, id]
@@ -197,17 +210,20 @@ export class Mysql extends DataSource
 		const connection    = this.connection ?? await this.connect()
 		const propertiesSql = this.propertiesToSqlSelect(type)
 
-		const objectTable = depends.storeOf(object)
-		const table       = depends.storeOf(type)
+		const objectTable   = depends.storeOf(object)
+		const propertyTable = depends.storeOf(type)
+		if (!objectTable || !propertyTable) {
+			throw 'Collection objects are not stored'
+		}
 
 		let query: string
 		if (depends.componentOf(object, property)) {
-			query = 'SELECT ' + propertiesSql + ' FROM `' + table + '` WHERE ' + objectTable + '_id = ?'
+			query = 'SELECT ' + propertiesSql + ' FROM `' + propertyTable + '` WHERE ' + objectTable + '_id = ?'
 		}
 		else {
-			const joinTable = [objectTable, table].sort().join('_')
-			query = 'SELECT `' + table + '`.' + propertiesSql + ' FROM `' + table + '`'
-				+ ' INNER JOIN `' + joinTable + '` ON `' + joinTable + '`.' + table + '_id = `' + table + '`.id'
+			const joinTable = joinTableName(objectTable, propertyTable)
+			query = 'SELECT `' + propertyTable + '`.' + propertiesSql + ' FROM `' + propertyTable + '`'
+				+ ' INNER JOIN `' + joinTable + '` ON `' + joinTable + '`.' + propertyTable + '_id = `' + propertyTable + '`.id'
 				+ ' WHERE `' + joinTable + '`.' + objectTable + '_id = ?'
 		}
 		const rows = await connection.query<Entity<PT>[]>(query, [object.id])
@@ -224,13 +240,16 @@ export class Mysql extends DataSource
 
 		const objectTable   = depends.storeOf(object)
 		const propertyTable = depends.storeOf(type)
+		if (!objectTable || !propertyTable) {
+			throw 'Collection objects are not stored'
+		}
 
 		let query: string
 		if (depends.componentOf(object, property)) {
 			query = 'SELECT id FROM `' + propertyTable + '` WHERE ' + objectTable + '_id = ?'
 		}
 		else {
-			const joinTable = [objectTable, propertyTable].sort().join('_')
+			const joinTable = joinTableName(objectTable, propertyTable)
 			query = 'SELECT ' + propertyTable + '_id id FROM `' + joinTable + '`'
 				+ ' WHERE `' + joinTable + '`.' + objectTable + '_id = ?'
 		}
