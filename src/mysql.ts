@@ -282,6 +282,59 @@ export class Mysql extends DataSource
 			: this.insert(object)
 	}
 
+	async saveCollection<T extends object>(object: Entity<T>, property: KeyOf<T>, value: (Identifier | MayEntity)[])
+	{
+		return depends.componentOf(object, property.endsWith('Ids') ? property.slice(0, -3) as KeyOf<T> : property)
+			? this.saveComponents(object, property, value)
+			: this.saveLinks(object, property, value)
+	}
+
+	async saveComponents<T extends object>(object: Entity<T>, property: KeyOf<T>, components: (Identifier | MayEntity)[])
+	{
+		// TODO
+	}
+
+	async saveLinks<T extends object>(object: Entity<T>, property: KeyOf<T>, links: (Identifier | MayEntity)[])
+	{
+		property = property.endsWith('Ids') ? property.slice(0, -3) as KeyOf<T> : property
+
+		const connection    = this.connection ?? await this.connect()
+		const objectTable   = depends.storeOf(object) as string
+		const propertyType  = new ReflectProperty(object, property).collectionType.elementType.type as Type
+		const propertyTable = depends.storeOf(propertyType) as string
+		const linkColumn    = depends.columnOf(propertyTable + 'Id')
+		const linkTable     = joinTableName(objectTable, propertyTable)
+		const objectColumn  = depends.columnOf(objectTable + 'Id')
+		const objectId      = object.id
+		const stored        = await this.readCollectionIds(object, property, propertyType)
+		const saved         = []
+		const isLinkBigInt   = typeof links[0]  === 'bigint'
+		const isStoredBigInt = typeof stored[0] === 'bigint'
+		const isSameType     = isLinkBigInt === isStoredBigInt
+
+		for (let link of links) {
+			const linkId = (typeof link === 'object')
+				? (link = this.isObjectConnected(link) ? link.id : (await this.save(link)).id)
+				: link
+			if (!stored.includes(isSameType ? linkId : (isStoredBigInt ? BigInt(linkId as number) : Number(linkId)))) {
+				await connection.query(
+					'INSERT INTO `' + linkTable + '` SET ' + objectColumn + ' = ?, ' + linkColumn + ' = ?',
+					[objectId, linkId]
+				)
+			}
+			saved.push(linkId)
+		}
+
+		for (let storedId of stored) {
+			if (!saved.includes(isSameType ? storedId : (isLinkBigInt ? BigInt(storedId as number) : Number(storedId)))) {
+				await connection.query(
+					'DELETE FROM `' + linkTable + '` WHERE ' + objectColumn + ' = ? AND ' + linkColumn + ' = ?',
+					[objectId, storedId]
+				)
+			}
+		}
+	}
+
 	async search<T extends object>(type: Type<T>, search: SearchType<T> = {}): Promise<Entity<T>[]>
 	{
 		const connection    = this.connection ?? await this.connect()
@@ -335,7 +388,13 @@ export class Mysql extends DataSource
 		const record:   AnyObject  = {}
 		for (const property of Object.keys(object) as KeyOf<T>[]) {
 			const value = await depends.applySaveTransformer(object, property, record)
-			if (value === depends.ignoreTransformedValue) continue
+			if (value === depends.ignoreTransformedValue) {
+				continue
+			}
+			if (Array.isArray(value)) {
+				deferred.push((object: Entity<T>) => this.saveCollection(object, property, value))
+				continue
+			}
 			if (isAnyFunction(value)) {
 				deferred.push(value)
 				continue
