@@ -302,36 +302,32 @@ export class Mysql extends DataSource
 		const objectTable   = depends.storeOf(object) as string
 		const propertyType  = new ReflectProperty(object, property).collectionType.elementType.type as Type
 		const propertyTable = depends.storeOf(propertyType) as string
-		const linkColumn    = depends.columnOf(propertyTable + 'Id')
+		const linkColumn    = depends.columnOf(propertyTable) + '_id'
 		const linkTable     = joinTableName(objectTable, propertyTable)
-		const objectColumn  = depends.columnOf(objectTable + 'Id')
+		const objectColumn  = depends.columnOf(objectTable) + '_id'
 		const objectId      = object.id
 		const stored        = await this.readCollectionIds(object, property, propertyType)
 		const saved         = []
-		const isLinkBigInt   = typeof links[0]  === 'bigint'
-		const isStoredBigInt = typeof stored[0] === 'bigint'
-		const isSameType     = isLinkBigInt === isStoredBigInt
 
-		for (let link of links) {
+		for (const link of links) {
 			const linkId = (typeof link === 'object')
-				? (link = this.isObjectConnected(link) ? link.id : (await this.save(link)).id)
+				? (this.isObjectConnected(link) ? link.id : (await this.save(link)).id)
 				: link
-			if (!stored.includes(isSameType ? linkId : (isStoredBigInt ? BigInt(linkId as number) : Number(linkId)))) {
-				await connection.query(
-					'INSERT INTO `' + linkTable + '` SET ' + objectColumn + ' = ?, ' + linkColumn + ' = ?',
-					[objectId, linkId]
-				)
-			}
 			saved.push(linkId)
+			if (stored.includes(linkId)) continue
+			await connection.query(
+				'INSERT INTO `' + linkTable + '` SET ' + objectColumn + ' = ?, ' + linkColumn + ' = ?',
+				[objectId, linkId]
+			)
+			stored.push(linkId)
 		}
 
-		for (let storedId of stored) {
-			if (!saved.includes(isSameType ? storedId : (isLinkBigInt ? BigInt(storedId as number) : Number(storedId)))) {
-				await connection.query(
-					'DELETE FROM `' + linkTable + '` WHERE ' + objectColumn + ' = ? AND ' + linkColumn + ' = ?',
-					[objectId, storedId]
-				)
-			}
+		for (const storedId of stored) {
+			if (saved.includes(storedId)) continue
+			await connection.query(
+				'DELETE FROM `' + linkTable + '` WHERE ' + objectColumn + ' = ? AND ' + linkColumn + ' = ?',
+				[objectId, storedId]
+			)
 		}
 	}
 
