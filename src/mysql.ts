@@ -8,11 +8,15 @@ import { typeOf }           from '@itrocks/class-type'
 import { CollectionType }   from '@itrocks/property-type'
 import { ReflectClass }     from '@itrocks/reflect'
 import { ReflectProperty }  from '@itrocks/reflect'
+import { Reverse }          from '@itrocks/sort'
+import { sortOf }           from '@itrocks/sort'
 import { DataSource }       from '@itrocks/storage'
 import { Entity }           from '@itrocks/storage'
 import { MayEntity }        from '@itrocks/storage'
 import { Identifier }       from '@itrocks/storage'
+import { Options }          from '@itrocks/storage'
 import { SearchType }       from '@itrocks/storage'
+import { Sort }             from '@itrocks/storage'
 import { Connection }       from 'mariadb'
 import { createConnection } from 'mariadb'
 import { UpsertResult }     from 'mariadb'
@@ -331,17 +335,29 @@ export class Mysql extends DataSource
 		}
 	}
 
-	async search<T extends object>(type: Type<T>, search: SearchType<T> = {}): Promise<Entity<T>[]>
+	async search<T extends object>(type: Type<T>, search: SearchType<T> = {}, options?: Options): Promise<Entity<T>[]>
 	{
 		const connection    = this.connection ?? await this.connect()
 		const propertiesSql = this.propertiesToSqlSelect(type)
+
+		let sortOption = undefined
+		for (const option of this.options(options)) {
+			if ((option instanceof Sort) && (option.properties.length)) {
+				sortOption = option
+			}
+		}
+		if (!sortOption) {
+			sortOption = new Sort(sortOf(type))
+		}
 
 		Object.setPrototypeOf(search, type.prototype)
 		const sql      = this.propertiesToSearchSql(search)
 		const [values] = await this.valuesToDb(search)
 		if (DEBUG) console.log('SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '`' + sql, '[', values, ']')
+		const sort = ' ORDER BY '
+			+ sortOption.properties.map(property => '`' + property + '`' + (property instanceof Reverse ? ' DESC' : '')).join(', ')
 		const rows = await connection.query<Entity<T>[]>(
-			'SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '`' + sql, Object.values(values)
+			'SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '`' + sql + sort, Object.values(values)
 		)
 
 		return Promise.all(rows.map(row => this.valuesFromDb(row, type)))
