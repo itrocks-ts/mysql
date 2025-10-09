@@ -342,20 +342,24 @@ export class Mysql extends DataSource
 
 		let sortOption = undefined
 		for (const option of this.options(options)) {
-			if ((option instanceof Sort) && (option.properties.length)) {
-				sortOption = option
+			if (option === Sort) {
+				sortOption = new Sort(sortOf(type))
 			}
-		}
-		if (!sortOption) {
-			sortOption = new Sort(sortOf(type))
+			if (option instanceof Sort) {
+				sortOption = option.properties.length ? option : new Sort(sortOf(type))
+			}
 		}
 
 		Object.setPrototypeOf(search, type.prototype)
 		const sql      = this.propertiesToSearchSql(search)
 		const [values] = await this.valuesToDb(search)
 		if (DEBUG) console.log('SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '`' + sql, '[', values, ']')
-		const sort = ' ORDER BY '
-			+ sortOption.properties.map(property => '`' + property + '`' + (property instanceof Reverse ? ' DESC' : '')).join(', ')
+		const sort = sortOption?.properties.length
+			? ' ORDER BY '
+				+ sortOption.properties
+					.map(property => '`' + property + '`' + (property instanceof Reverse ? ' DESC' : ''))
+					.join(', ')
+			: ''
 		const rows = await connection.query<Entity<T>[]>(
 			'SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '`' + sql + sort, Object.values(values)
 		)
