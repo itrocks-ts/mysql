@@ -186,8 +186,8 @@ export class Mysql extends DataSource
 			const columnName = depends.columnOf(propertyName)
 			sql.push(
 				(columnName.length !== propertyName.length)
-					? columnName + ' ' + propertyName
-					: propertyName
+					? ('`' + columnName + '` `' + propertyName + '`')
+					: ('`' + propertyName + '`')
 			)
 		}
 		return sql.join(', ')
