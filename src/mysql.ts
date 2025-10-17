@@ -1,10 +1,12 @@
 import { AnyObject }        from '@itrocks/class-type'
+import { inherits }         from '@itrocks/class-type'
 import { isAnyFunction }    from '@itrocks/class-type'
 import { isAnyType }        from '@itrocks/class-type'
 import { KeyOf }            from '@itrocks/class-type'
 import { ObjectOrType }     from '@itrocks/class-type'
 import { Type }             from '@itrocks/class-type'
 import { typeOf }           from '@itrocks/class-type'
+import { compositeOf }      from '@itrocks/composition'
 import { CollectionType }   from '@itrocks/property-type'
 import { ReflectClass }     from '@itrocks/reflect'
 import { ReflectProperty }  from '@itrocks/reflect'
@@ -288,20 +290,61 @@ export class Mysql extends DataSource
 
 	async saveCollection<T extends object>(object: Entity<T>, property: KeyOf<T>, value: (Identifier | MayEntity)[])
 	{
-		return depends.componentOf(object, property.endsWith('Ids') ? property.slice(0, -3) as KeyOf<T> : property)
+		if (property.endsWith('Ids')) {
+			property = property.slice(0, -3) as KeyOf<T>
+		}
+		return depends.componentOf(object, property)
 			? this.saveComponents(object, property, value)
 			: this.saveLinks(object, property, value)
 	}
 
 	async saveComponents<T extends object>(object: Entity<T>, property: KeyOf<T>, components: (Identifier | MayEntity)[])
 	{
-		// TODO
+		const connection   = this.connection ?? await this.connect()
+		const propertyType = new ReflectProperty(object, property).collectionType.elementType.type as Type
+		const stored       = await this.readCollectionIds(object, property, propertyType)
+		const saved        = new Array<Identifier>
+
+		let compositeProperty: ReflectProperty<object> | false | undefined
+		for (const component of components) {
+			if (typeof component !== 'object') {
+				saved.push(component)
+				continue
+			}
+			if (compositeProperty === undefined) {
+				const objectType = typeOf(object)
+				for (const candidate of new ReflectClass(component).properties) {
+					if (!compositeOf(component, candidate.name)) continue
+					const candidateType = candidate.type.type
+					if (!isAnyType(candidateType)) continue
+					if (!inherits(objectType, candidateType)) continue
+					compositeProperty = candidate
+					break
+				}
+			}
+			if (compositeProperty) {
+				// @ts-ignore TS2322 Don't understand this error
+				component[compositeProperty.name] = object
+			}
+			saved.push((await this.save(component)).id)
+		}
+
+		let componentTable: string | false | undefined
+		for (const storedId of stored) {
+			if (saved.includes(storedId)) continue
+			if (!componentTable) {
+				componentTable = depends.storeOf(propertyType)
+				if (!componentTable) {
+					throw 'Missing @Store on type ' + propertyType.name
+						+ ' used by @Component ' + new ReflectClass(object).name + '.' + property
+				}
+			}
+			await connection.query('DELETE FROM `' + componentTable + '` WHERE id = ?', [storedId])
+		}
 	}
 
 	async saveLinks<T extends object>(object: Entity<T>, property: KeyOf<T>, links: (Identifier | MayEntity)[])
 	{
-		property = property.endsWith('Ids') ? property.slice(0, -3) as KeyOf<T> : property
-
 		const connection    = this.connection ?? await this.connect()
 		const objectTable   = depends.storeOf(object) as string
 		const propertyType  = new ReflectProperty(object, property).collectionType.elementType.type as Type
@@ -311,7 +354,7 @@ export class Mysql extends DataSource
 		const objectColumn  = depends.columnOf(objectTable) + '_id'
 		const objectId      = object.id
 		const stored        = await this.readCollectionIds(object, property, propertyType)
-		const saved         = []
+		const saved         = new Array<Identifier>
 
 		for (const link of links) {
 			const linkId = (typeof link === 'object')
