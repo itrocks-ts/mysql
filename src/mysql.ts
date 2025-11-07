@@ -16,6 +16,7 @@ import { DataSource }       from '@itrocks/storage'
 import { Entity }           from '@itrocks/storage'
 import { MayEntity }        from '@itrocks/storage'
 import { Identifier }       from '@itrocks/storage'
+import { Limit }            from '@itrocks/storage'
 import { Options }          from '@itrocks/storage'
 import { SearchType }       from '@itrocks/storage'
 import { Sort }             from '@itrocks/storage'
@@ -397,10 +398,14 @@ export class Mysql extends DataSource
 		const connection    = this.connection ?? await this.connect()
 		const propertiesSql = this.propertiesToSqlSelect(type)
 
-		let sortOption = undefined
+		let limitOption: Limit | undefined = undefined
+		let sortOption:  Sort  | undefined = undefined
 		for (const option of this.options(options)) {
 			if (option === Sort) {
 				sortOption = new Sort(sortOf(type))
+			}
+			if (option instanceof Limit) {
+				limitOption = option
 			}
 			if (option instanceof Sort) {
 				sortOption = option.properties.length ? option : new Sort(sortOf(type))
@@ -411,14 +416,17 @@ export class Mysql extends DataSource
 		const sql      = this.propertiesToSearchSql(search)
 		const [values] = await this.valuesToDb(search)
 		if (DEBUG) console.log('SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '`' + sql, '[', values, ']')
-		const sort = sortOption?.properties.length
+		const limit  = limitOption?.limit  ? ' LIMIT '  + limitOption.limit  : '';
+		const offset = limitOption?.offset ? ' OFFSET ' + limitOption.offset : '';
+		const sort   = sortOption?.properties.length
 			? ' ORDER BY '
 				+ sortOption.properties
 					.map(property => '`' + property + '`' + (property instanceof Reverse ? ' DESC' : ''))
 					.join(', ')
 			: ''
 		const rows = await connection.query<Entity<T>[]>(
-			'SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '`' + sql + sort, Object.values(values)
+			'SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '`' + sql + sort + limit + offset,
+			Object.values(values)
 		)
 
 		return Promise.all(rows.map(row => this.valuesFromDb(row, type)))
