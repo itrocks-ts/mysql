@@ -81,6 +81,22 @@ export class Mysql extends DataSource
 		return this.connection = await createConnection(mariaDbConfig)
 	}
 
+	async count<T extends object>(type: Type<T>, search: SearchType<T> = {})
+	{
+		const connection = this.connection ?? await this.connect()
+
+		Object.setPrototypeOf(search, type.prototype)
+		const sql      = this.propertiesToSearchSql(search)
+		const [values] = await this.valuesToDb(search)
+		if (DEBUG) console.log('SELECT COUNT(*) FROM `' + depends.storeOf(type) + '`' + sql, '[', values, ']')
+		const row = (await connection.query<{count:number}[]>(
+			'SELECT COUNT(*) `count` FROM `' + depends.storeOf(type) + '`' + sql,
+			Object.values(values)
+		))[0]
+
+		return row?.count
+	}
+
 	async delete<T extends object>(object: Entity<T>, property: KeyOf<Entity<T>> = 'id')
 	{
 		await this.deleteId(object, object[property], property)
