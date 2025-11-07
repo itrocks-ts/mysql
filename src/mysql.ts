@@ -64,6 +64,8 @@ export class Mysql extends DataSource
 
 	connection?: Connection
 
+	saveQueue = new WeakMap<object, Promise<Entity<object> | void>>()
+
 	constructor(public config: { host: string, user: string, password: string, database: string })
 	{
 		super()
@@ -281,11 +283,23 @@ export class Mysql extends DataSource
 		return Promise.all(rows.map(row => this.valuesFromDb(row, type)))
 	}
 
+	async runSerialized<T extends object>(object: MayEntity<T>, task: () => Promise<Entity<T>>)
+	{
+		const prev = this.saveQueue.get(object) || Promise.resolve()
+		const next = prev.then(task, task)
+		this.saveQueue.set(
+			object, next.then(() => { this.saveQueue.delete(object) }, () => { this.saveQueue.delete(object) })
+		)
+		return next
+	}
+
 	async save<T extends object>(object: MayEntity<T>)
 	{
-		return this.isObjectConnected(object)
-			? this.update(object)
-			: this.insert(object)
+		return this.runSerialized(object, async () => {
+			return this.isObjectConnected(object)
+				? this.update(object)
+				: this.insert(object)
+		})
 	}
 
 	async saveCollection<T extends object>(object: Entity<T>, property: KeyOf<T>, value: (Identifier | MayEntity)[])
