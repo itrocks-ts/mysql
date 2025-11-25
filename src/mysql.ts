@@ -432,8 +432,8 @@ export class Mysql extends DataSource
 		const sql      = this.propertiesToSearchSql(search)
 		const [values] = await this.valuesToDb(search)
 		if (DEBUG) console.log('SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '`' + sql, '[', values, ']')
-		const limit  = limitOption?.limit  ? ' LIMIT '  + limitOption.limit  : '';
-		const offset = limitOption?.offset ? ' OFFSET ' + limitOption.offset : '';
+		const limit  = limitOption?.limit  ? ' LIMIT '  + limitOption.limit  : ''
+		const offset = limitOption?.offset ? ' OFFSET ' + limitOption.offset : ''
 		const sort   = sortOption?.properties.length
 			? ' ORDER BY '
 				+ sortOption.properties
