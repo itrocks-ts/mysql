@@ -88,7 +88,7 @@ export class Mysql extends DataSource
 		Object.setPrototypeOf(search, type.prototype)
 		const sql      = this.propertiesToSearchSql(search)
 		const [values] = await this.valuesToDb(search)
-		if (DEBUG) console.log('SELECT COUNT(*) FROM `' + depends.storeOf(type) + '`' + sql, '[', values, ']')
+		if (DEBUG) console.log('SELECT COUNT(*) FROM `' + depends.storeOf(type) + '`' + sql, JSON.stringify(values))
 		const row = (await connection.query<{count:number}[]>(
 			'SELECT COUNT(*) `count` FROM `' + depends.storeOf(type) + '`' + sql,
 			Object.values(values)
@@ -177,10 +177,14 @@ export class Mysql extends DataSource
 			.map(([name, value]) => {
 				let sql: string
 				if (value instanceof depends.QueryFunction) {
-					[search[name], sql] = depends.queryFunctionCall(value)
+					[value, sql] = depends.queryFunctionCall(value)
+					search[name] = value
 				}
 				else {
 					sql = ' = ?'
+				}
+				if ((typeof value)[0] === 'o') {
+					name = Array.isArray(value) ? 'id' : (name + '_id')
 				}
 				return '`' + depends.columnOf(name) + '`' + sql
 			})
@@ -431,7 +435,9 @@ export class Mysql extends DataSource
 		Object.setPrototypeOf(search, type.prototype)
 		const sql      = this.propertiesToSearchSql(search)
 		const [values] = await this.valuesToDb(search)
-		if (DEBUG) console.log('SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '`' + sql, '[', values, ']')
+		if (DEBUG) console.log(
+			'SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '`' + sql, JSON.stringify(values)
+		)
 		const limit  = limitOption?.limit  ? ' LIMIT '  + limitOption.limit  : ''
 		const offset = limitOption?.offset ? ' OFFSET ' + limitOption.offset : ''
 		const sort   = sortOption?.properties.length
