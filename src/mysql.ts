@@ -218,6 +218,13 @@ export class Mysql extends DataSource
 		return sql.join(', ')
 	}
 
+	async query<T extends object>(type: Type<T>, query: string, values?: any)
+	{
+		const connection = this.connection ?? await this.connect()
+		const rows       = await connection.query<Entity<T>[]>(query, values)
+		return Promise.all(rows.map(row => this.valuesFromDb(row, type)))
+	}
+
 	async read<T extends object>(type: Type<T>, id: Identifier)
 	{
 		const connection    = this.connection ?? await this.connect()
