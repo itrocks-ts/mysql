@@ -221,6 +221,7 @@ export class Mysql extends DataSource
 	async query<T extends object>(type: Type<T>, query: string, values?: any)
 	{
 		const connection = this.connection ?? await this.connect()
+		if (DEBUG) console.log(query, values)
 		const rows       = await connection.query<Entity<T>[]>(query, values)
 		return Promise.all(rows.map(row => this.valuesFromDb(row, type)))
 	}
