@@ -239,11 +239,9 @@ export class Mysql extends DataSource
 		return this.valuesFromDb(rows[0], type)
 	}
 
-	async readCollection<T extends object, PT extends object>(
-		object:   Entity<T>,
-		property: KeyOf<T>,
-		type = new ReflectProperty(object, property).collectionType.elementType.type as Type<PT>
-	) {
+	async readCollection<T extends object, PT extends object>(object: Entity<T>, property: KeyOf<T>, type?: Type<PT>)
+	{
+		type              ??= new ReflectProperty(object, property).collectionType.elementType.type as Type<PT>
 		const connection    = this.connection ?? await this.connect()
 		const propertiesSql = this.propertiesToSqlSelect(type)
 
@@ -268,11 +266,9 @@ export class Mysql extends DataSource
 		return Promise.all(rows.map(row => this.valuesFromDb(row, type)))
 	}
 
-	async readCollectionIds<T extends object, PT extends object>(
-		object:   Entity<T>,
-		property: KeyOf<T>,
-		type = new ReflectProperty(object, property).collectionType.elementType.type as Type<PT>
-	) {
+	async readCollectionIds<T extends object, PT extends object>(object: Entity<T>, property: KeyOf<T>, type?: Type<PT>)
+	{
+		type           ??= new ReflectProperty(object, property).collectionType.elementType.type as Type<PT>
 		const connection = this.connection ?? await this.connect()
 
 		const objectTable   = depends.storeOf(object)
