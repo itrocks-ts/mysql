@@ -5,6 +5,8 @@
 	},
 	"dependencies": {
 		"@itrocks/class-type": "latest",
+		"@itrocks/composition": "latest",
+		"@itrocks/property-type": "latest",
 		"@itrocks/reflect": "latest",
 		"@itrocks/sort": "latest",
 		"@itrocks/storage": "latest",
@@ -59,5 +61,5 @@
 		"build:esm": "tsc -p tsconfig.esm.json"
 	},
 	"types": "./esm/mysql.d.ts",
-	"version": "0.1.3"
+	"version": "0.1.4"
 }

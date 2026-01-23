@@ -148,7 +148,7 @@ export class Mysql extends DataSource
 			((id >= Number.MIN_SAFE_INTEGER) && (id <= Number.MAX_SAFE_INTEGER)) ? Number(id) : id
 		)
 		for (const callback of deferred) {
-			callback(object)
+			await callback(object)
 		}
 
 		return entity
@@ -468,7 +468,7 @@ export class Mysql extends DataSource
 		if (DEBUG) console.log(query, JSON.stringify(Object.values(values).concat([object.id])))
 		await connection.query(query, Object.values(values).concat([object.id]))
 		for (const callback of deferred) {
-			callback(object)
+			await callback(object)
 		}
 
 		return object
