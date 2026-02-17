@@ -85,9 +85,10 @@ export class Mysql extends DataSource
 	{
 		const connection = this.connection ?? await this.connect()
 
-		Object.setPrototypeOf(search, type.prototype)
-		const sql      = this.propertiesToSearchSql(search)
-		const [values] = await this.valuesToDb(search)
+		const localSearch = {...search}
+		Object.setPrototypeOf(localSearch, type.prototype)
+		const sql      = this.propertiesToSearchSql(localSearch)
+		const [values] = await this.valuesToDb(localSearch)
 		if (DEBUG) console.log('SELECT COUNT(*) FROM `' + depends.storeOf(type) + '`' + sql, JSON.stringify(values))
 		const row = (await connection.query<{count:number}[]>(
 			'SELECT COUNT(*) `count` FROM `' + depends.storeOf(type) + '`' + sql,
@@ -435,10 +436,10 @@ export class Mysql extends DataSource
 				sortOption = option.properties.length ? option : new Sort(sortOf(type))
 			}
 		}
-
-		Object.setPrototypeOf(search, type.prototype)
-		const sql      = this.propertiesToSearchSql(search)
-		const [values] = await this.valuesToDb(search)
+		const localSearch = {...search}
+		Object.setPrototypeOf(localSearch, type.prototype)
+		const sql      = this.propertiesToSearchSql(localSearch)
+		const [values] = await this.valuesToDb(localSearch)
 		if (DEBUG) console.log(
 			'SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '`' + sql, JSON.stringify(values)
 		)
