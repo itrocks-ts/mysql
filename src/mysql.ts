@@ -72,6 +72,16 @@ export class Mysql extends DataSource
 		super()
 	}
 
+	columnName<T extends object>(property: ReflectProperty<T>)
+	{
+		const propertyType = property.type
+		if (propertyType instanceof CollectionType) return
+		const propertyName = (isAnyType(propertyType.type) && depends.storeOf(propertyType.type))
+			? property.name + 'Id'
+			: property.name
+		return depends.columnOf(propertyName)
+	}
+
 	async connect()
 	{
 		const mariaDbConfig = Object.assign(this.config, {
@@ -204,12 +214,9 @@ export class Mysql extends DataSource
 	{
 		const sql = ['id']
 		for (const property of new ReflectClass(type).properties) {
-			const propertyType = property.type
-			if (propertyType instanceof CollectionType) continue
-			const propertyName = (isAnyType(propertyType.type) && depends.storeOf(propertyType.type))
-				? property.name + 'Id'
-				: property.name
-			const columnName = depends.columnOf(propertyName)
+			const columnName = this.columnName(property)
+			if (!columnName) continue
+			const propertyName = property.name
 			sql.push(
 				(columnName.length !== propertyName.length)
 					? ('`' + columnName + '` `' + propertyName + '`')
@@ -448,7 +455,12 @@ export class Mysql extends DataSource
 		const sort   = sortOption?.properties.length
 			? ' ORDER BY '
 				+ sortOption.properties
-					.map(property => '`' + property + '`' + (property instanceof Reverse ? ' DESC' : ''))
+					.map(property => ({
+						column:  this.columnName(new ReflectProperty(type, '' + property as KeyOf<T>)),
+						reverse: property instanceof Reverse
+					}))
+					.filter(property => property.column)
+					.map(property => '`' + property.column + '`' + (property.reverse ? ' DESC' : ''))
 					.join(', ')
 			: ''
 		const rows = await connection.query<Entity<T>[]>(
