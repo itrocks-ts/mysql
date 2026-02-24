@@ -76,10 +76,7 @@ export class Mysql extends DataSource
 	{
 		const propertyType = property.type
 		if (propertyType instanceof CollectionType) return
-		const propertyName = (isAnyType(propertyType.type) && depends.storeOf(propertyType.type))
-			? property.name + 'Id'
-			: property.name
-		return depends.columnOf(propertyName)
+		return depends.columnOf(this.targetName(property))
 	}
 
 	async connect()
@@ -216,7 +213,7 @@ export class Mysql extends DataSource
 		for (const property of new ReflectClass(type).properties) {
 			const columnName = this.columnName(property)
 			if (!columnName) continue
-			const propertyName = property.name
+			const propertyName = this.targetName(property)
 			sql.push(
 				(columnName.length !== propertyName.length)
 					? ('`' + columnName + '` `' + propertyName + '`')
@@ -469,6 +466,14 @@ export class Mysql extends DataSource
 		)
 
 		return Promise.all(rows.map(row => this.valuesFromDb(row, type)))
+	}
+
+	targetName<T extends object>(property: ReflectProperty<T>)
+	{
+		const type = property.type.type
+		return (isAnyType(type) && depends.storeOf(type))
+			? property.name + 'Id'
+			: property.name
 	}
 
 	async update<T extends object>(object: Entity<T>)
