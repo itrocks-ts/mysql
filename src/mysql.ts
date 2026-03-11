@@ -8,6 +8,7 @@ import { Type }             from '@itrocks/class-type'
 import { typeOf }           from '@itrocks/class-type'
 import { compositeOf }      from '@itrocks/composition'
 import { CollectionType }   from '@itrocks/property-type'
+import { PropertyType }     from '@itrocks/property-type'
 import { ReflectClass }     from '@itrocks/reflect'
 import { ReflectProperty }  from '@itrocks/reflect'
 import { Reverse }          from '@itrocks/sort'
@@ -357,9 +358,9 @@ export class Mysql extends DataSource
 			}
 			if (compositeProperty === undefined) {
 				const objectType = typeOf(object)
-				for (const candidate of new ReflectClass(component).properties) {
+				for (const candidate of new ReflectClass(component as MayEntity).properties) {
 					if (!compositeOf(component, candidate.name)) continue
-					const candidateType = candidate.type.type
+					const candidateType = (candidate.type as PropertyType).type
 					if (!isAnyType(candidateType)) continue
 					if (!inherits(objectType, candidateType)) continue
 					compositeProperty = candidate
