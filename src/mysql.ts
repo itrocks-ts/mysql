@@ -2,19 +2,18 @@ import { AnyObject }        from '@itrocks/class-type'
 import { inherits }         from '@itrocks/class-type'
 import { isAnyFunction }    from '@itrocks/class-type'
 import { isAnyType }        from '@itrocks/class-type'
-import { KeyOf }            from '@itrocks/class-type'
 import { ObjectOrType }     from '@itrocks/class-type'
 import { Type }             from '@itrocks/class-type'
 import { typeOf }           from '@itrocks/class-type'
 import { compositeOf }      from '@itrocks/composition'
 import { CollectionType }   from '@itrocks/property-type'
-import { PropertyType }     from '@itrocks/property-type'
 import { ReflectClass }     from '@itrocks/reflect'
 import { ReflectProperty }  from '@itrocks/reflect'
 import { Reverse }          from '@itrocks/sort'
 import { sortOf }           from '@itrocks/sort'
 import { DataSource }       from '@itrocks/storage'
 import { Entity }           from '@itrocks/storage'
+import { isIdentifier }     from '@itrocks/storage'
 import { MayEntity }        from '@itrocks/storage'
 import { Identifier }       from '@itrocks/storage'
 import { Limit }            from '@itrocks/storage'
@@ -28,10 +27,10 @@ import { UpsertResult }     from 'mariadb'
 export const DEBUG = false
 
 interface Dependencies<QF extends object = object> {
-	applyReadTransformer:   <T extends object>(record: AnyObject, property: KeyOf<T>, object: T) => any
-	applySaveTransformer:   <T extends object>(object: T, property: KeyOf<T>, record: AnyObject) => any
-	columnOf:               (property: string) => string,
-	componentOf:            <T extends object>(target: T, property: KeyOf<T>) => boolean
+	applyReadTransformer:   <T extends object>(record: AnyObject, property: keyof T, object: T) => any
+	applySaveTransformer:   <T extends object>(object: T, property: keyof T, record: AnyObject) => any
+	columnOf:               (property: number | string | symbol) => string,
+	componentOf:            <T extends object>(target: T, property: keyof T) => boolean
 	ignoreTransformedValue: any
 	QueryFunction:          Type<QF>,
 	queryFunctionCall:      (value: QF) => [any, string]
@@ -39,9 +38,9 @@ interface Dependencies<QF extends object = object> {
 }
 
 const depends: Dependencies = {
-	applyReadTransformer:   (record, property) => record[property],
+	applyReadTransformer:   (record, property) => record[depends.columnOf(property)],
 	applySaveTransformer:   (object, property) => object[property],
-	columnOf:               name => name.toLowerCase(),
+	columnOf:               name => name.toString().toLowerCase(),
 	componentOf:            () => false,
 	ignoreTransformedValue: Symbol('ignoreTransformedValue'),
 	QueryFunction:          class {},
@@ -75,6 +74,7 @@ export class Mysql extends DataSource
 
 	columnName<T extends object>(property: ReflectProperty<T>)
 	{
+		if (typeof property.name !== 'string') throw 'No column name for non-string property'
 		const propertyType = property.type
 		if (propertyType instanceof CollectionType) return
 		return depends.columnOf(this.targetName(property))
@@ -106,13 +106,13 @@ export class Mysql extends DataSource
 		return row?.count
 	}
 
-	async delete<T extends object>(object: Entity<T>, property: KeyOf<Entity<T>> = 'id')
+	async delete<T extends object>(object: Entity<T>, property: keyof Entity<T> = 'id')
 	{
 		await this.deleteId(object, object[property], property)
 		return this.disconnectObject(object)
 	}
 
-	async deleteId<T extends object>(type: ObjectOrType<T>, id: any, property: KeyOf<Entity<T>> = 'id')
+	async deleteId<T extends object>(type: ObjectOrType<T>, id: any, property: keyof Entity<T> = 'id')
 	{
 		const connection = this.connection ?? await this.connect()
 		if (DEBUG) console.log(
@@ -125,7 +125,7 @@ export class Mysql extends DataSource
 		)
 	}
 
-	async deleteRelatedId<T extends Entity>(object: T, property: KeyOf<T>, id: Identifier)
+	async deleteRelatedId<T extends Entity>(object: T, property: keyof T, id: Identifier)
 	{
 		const connection = this.connection ?? await this.connect()
 
@@ -163,7 +163,7 @@ export class Mysql extends DataSource
 		return entity
 	}
 
-	async insertRelatedId<T extends Entity>(object: T, property: KeyOf<T>, id: Identifier)
+	async insertRelatedId<T extends Entity>(object: T, property: keyof T, id: Identifier)
 	{
 		const connection = this.connection ?? await this.connect()
 
@@ -245,7 +245,7 @@ export class Mysql extends DataSource
 		return this.valuesFromDb(rows[0], type)
 	}
 
-	async readCollection<T extends object, PT extends object>(object: Entity<T>, property: KeyOf<T>, type?: Type<PT>)
+	async readCollection<T extends object, PT extends object>(object: Entity<T>, property: keyof T, type?: Type<PT>)
 	{
 		type              ??= new ReflectProperty(object, property).collectionType.elementType.type as Type<PT>
 		const connection    = this.connection ?? await this.connect()
@@ -272,7 +272,7 @@ export class Mysql extends DataSource
 		return Promise.all(rows.map(row => this.valuesFromDb(row, type)))
 	}
 
-	async readCollectionIds<T extends object, PT extends object>(object: Entity<T>, property: KeyOf<T>, type?: Type<PT>)
+	async readCollectionIds<T extends object, PT extends object>(object: Entity<T>, property: keyof T, type?: Type<PT>)
 	{
 		type           ??= new ReflectProperty(object, property).collectionType.elementType.type as Type<PT>
 		const connection = this.connection ?? await this.connect()
@@ -333,34 +333,35 @@ export class Mysql extends DataSource
 		})
 	}
 
-	async saveCollection<T extends object>(object: Entity<T>, property: KeyOf<T>, value: (Identifier | MayEntity)[])
+	async saveCollection<T extends object>(object: Entity<T>, property: keyof T, value: (Identifier | MayEntity)[])
 	{
-		if (property.endsWith('Ids')) {
-			property = property.slice(0, -3) as KeyOf<T>
+		if (property.toString().endsWith('Ids')) {
+			property = property.toString().slice(0, -3) as keyof T
 		}
 		return depends.componentOf(object, property)
 			? this.saveComponents(object, property, value)
 			: this.saveLinks(object, property, value)
 	}
 
-	async saveComponents<T extends object>(object: Entity<T>, property: KeyOf<T>, components: (Identifier | MayEntity)[])
-	{
+	async saveComponents<T extends object, C extends AnyObject>(
+		object: Entity<T>, property: keyof T, components: (Identifier | MayEntity<C>)[]
+	) {
 		const connection   = this.connection ?? await this.connect()
 		const propertyType = new ReflectProperty(object, property).collectionType.elementType.type as Type
 		const stored       = await this.readCollectionIds(object, property, propertyType)
 		const saved        = new Array<Identifier>
 
-		let compositeProperty: ReflectProperty<object> | false | undefined
+		let compositeProperty: ReflectProperty<C> | false | undefined
 		for (const component of components) {
-			if (typeof component !== 'object') {
+			if (isIdentifier(component)) {
 				saved.push(component)
 				continue
 			}
 			if (compositeProperty === undefined) {
 				const objectType = typeOf(object)
-				for (const candidate of new ReflectClass(component as MayEntity).properties) {
+				for (const candidate of new ReflectClass(component).properties) {
 					if (!compositeOf(component, candidate.name)) continue
-					const candidateType = (candidate.type as PropertyType).type
+					const candidateType = candidate.type.type
 					if (!isAnyType(candidateType)) continue
 					if (!inherits(objectType, candidateType)) continue
 					compositeProperty = candidate
@@ -368,8 +369,7 @@ export class Mysql extends DataSource
 				}
 			}
 			if (compositeProperty) {
-				// @ts-ignore TS2322 Don't understand this error
-				component[compositeProperty.name] = object
+				component[compositeProperty.name] = object as any
 			}
 			saved.push((await this.save(component)).id)
 		}
@@ -381,14 +381,14 @@ export class Mysql extends DataSource
 				componentTable = depends.storeOf(propertyType)
 				if (!componentTable) {
 					throw 'Missing @Store on type ' + propertyType.name
-						+ ' used by @Component ' + new ReflectClass(object).name + '.' + property
+						+ ' used by @Component ' + new ReflectClass(object).name + '.' + property.toString()
 				}
 			}
 			await connection.query('DELETE FROM `' + componentTable + '` WHERE id = ?', [storedId])
 		}
 	}
 
-	async saveLinks<T extends object>(object: Entity<T>, property: KeyOf<T>, links: (Identifier | MayEntity)[])
+	async saveLinks<T extends object>(object: Entity<T>, property: keyof T, links: (Identifier | MayEntity)[])
 	{
 		const connection    = this.connection ?? await this.connect()
 		const objectTable   = depends.storeOf(object) as string
@@ -454,7 +454,7 @@ export class Mysql extends DataSource
 			? ' ORDER BY '
 				+ sortOption.properties
 					.map(property => ({
-						column:  this.columnName(new ReflectProperty(type, '' + property as KeyOf<T>)),
+						column:  this.columnName(new ReflectProperty(type, '' + property as keyof T)),
 						reverse: property instanceof Reverse
 					}))
 					.filter(property => property.column)
@@ -473,8 +473,8 @@ export class Mysql extends DataSource
 	{
 		const type = property.type.type
 		return (isAnyType(type) && depends.storeOf(type))
-			? property.name + 'Id'
-			: property.name
+			? property.name.toString() + 'Id'
+			: property.name.toString()
 	}
 
 	async update<T extends object>(object: Entity<T>)
@@ -496,7 +496,7 @@ export class Mysql extends DataSource
 	async valuesFromDb<T extends object>(record: Entity<T>, type: Type<T>)
 	{
 		const object = (new type) as Entity<T>
-		let property: KeyOf<Entity<T>>
+		let property: keyof Entity<T>
 		for (property in record) {
 			const value = await depends.applyReadTransformer(record, property, object)
 			if (value === depends.ignoreTransformedValue) continue
@@ -512,7 +512,7 @@ export class Mysql extends DataSource
 	{
 		const deferred: Function[] = []
 		const record:   AnyObject  = {}
-		for (const property of Object.keys(object) as KeyOf<T>[]) {
+		for (const property of Object.keys(object) as (keyof T)[]) {
 			const value = await depends.applySaveTransformer(object, property, record)
 			if (value === depends.ignoreTransformedValue) {
 				continue
