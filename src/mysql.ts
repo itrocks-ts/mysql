@@ -1,4 +1,3 @@
-import { AnyObject }        from '@itrocks/class-type'
 import { inherits }         from '@itrocks/class-type'
 import { isAnyFunction }    from '@itrocks/class-type'
 import { isAnyType }        from '@itrocks/class-type'
@@ -25,6 +24,8 @@ import { createConnection } from 'mariadb'
 import { UpsertResult }     from 'mariadb'
 
 export const DEBUG = false
+
+type AnyObject = Record<string, any>
 
 interface Dependencies<QF extends object = object> {
 	applyReadTransformer:   <T extends object>(record: AnyObject, property: keyof T, object: T) => any
@@ -343,7 +344,7 @@ export class Mysql extends DataSource
 			: this.saveLinks(object, property, value)
 	}
 
-	async saveComponents<T extends object, C extends AnyObject>(
+	async saveComponents<T extends object, C extends object>(
 		object: Entity<T>, property: keyof T, components: (Identifier | MayEntity<C>)[]
 	) {
 		const connection   = this.connection ?? await this.connect()
