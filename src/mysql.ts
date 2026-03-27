@@ -20,6 +20,7 @@ import { Options }          from '@itrocks/storage'
 import { SearchType }       from '@itrocks/storage'
 import { Sort }             from '@itrocks/storage'
 import { Connection }       from 'mariadb'
+import { ConnectionConfig } from 'mariadb'
 import { createConnection } from 'mariadb'
 import { UpsertResult }     from 'mariadb'
 
@@ -83,9 +84,12 @@ export class Mysql extends DataSource
 
 	async connect()
 	{
-		const mariaDbConfig = Object.assign(this.config, {
+		const mariaDbConfig: ConnectionConfig = Object.assign(this.config, {
 			allowPublicKeyRetrieval: true,
-			dateStrings: false
+			dateStrings: false,
+			debugLen: 100000,
+			logParam: true,
+			trace: true
 		})
 		return this.connection = await createConnection(mariaDbConfig)
 	}
