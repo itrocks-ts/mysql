@@ -185,6 +185,18 @@ export class Mysql extends DataSource
 		connection.query(query, values)
 	}
 
+	orderBy<T extends object>(type: Type<T>, sort = new Sort(sortOf(type)))
+	{
+		return ' ORDER BY ' + sort.properties
+			.map(property => ({
+				column:  this.columnName(new ReflectProperty(type, '' + property as keyof T)),
+				reverse: property instanceof Reverse
+			}))
+			.filter(property => property.column)
+			.map(property => '`' + property.column + '`' + (property.reverse ? ' DESC' : ''))
+			.join(', ')
+	}
+
 	propertiesToSearchSql(search: AnyObject)
 	{
 		const sql = Object.entries(search)
@@ -272,6 +284,7 @@ export class Mysql extends DataSource
 				+ ' INNER JOIN `' + joinTable + '` ON `' + joinTable + '`.' + propertyTable + '_id = `' + propertyTable + '`.id'
 				+ ' WHERE `' + joinTable + '`.' + objectTable + '_id = ?'
 		}
+		query += this.orderBy(type)
 		const rows = await connection.query<Entity<PT>[]>(query, [object.id])
 
 		return Promise.all(rows.map(row => this.valuesFromDb(row, type)))
@@ -297,6 +310,7 @@ export class Mysql extends DataSource
 			query = 'SELECT ' + propertyTable + '_id id FROM `' + joinTable + '`'
 				+ ' WHERE `' + joinTable + '`.' + objectTable + '_id = ?'
 		}
+		query += this.orderBy(type)
 		const rows = await connection.query<Entity[]>(query, [object.id])
 
 		return Promise.all(rows.map(row => row.id))
@@ -309,12 +323,11 @@ export class Mysql extends DataSource
 		const propertiesSql = this.propertiesToSqlSelect(type)
 
 		const questionMarks = Array(ids.length).fill('?').join(', ')
-		if (DEBUG) console.log(
-			'SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '` WHERE id IN (' + questionMarks + ')', ids
-		)
-		const rows = await connection.query<Entity<T>[]>(
-			'SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '` WHERE id IN (' + questionMarks + ')', ids
-		)
+		const query = 'SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '`'
+			+ ' WHERE id IN (' + questionMarks + ')'
+			+ this.orderBy(type)
+		if (DEBUG) console.log(query)
+		const rows = await connection.query<Entity<T>[]>(query, ids)
 
 		return Promise.all(rows.map(row => this.valuesFromDb(row, type)))
 	}
@@ -450,26 +463,12 @@ export class Mysql extends DataSource
 		Object.setPrototypeOf(localSearch, type.prototype)
 		const sql      = this.propertiesToSearchSql(localSearch)
 		const [values] = await this.valuesToDb(localSearch)
-		if (DEBUG) console.log(
-			'SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '`' + sql, JSON.stringify(values)
-		)
-		const limit  = limitOption?.limit  ? ' LIMIT '  + limitOption.limit  : ''
-		const offset = limitOption?.offset ? ' OFFSET ' + limitOption.offset : ''
-		const sort   = sortOption?.properties.length
-			? ' ORDER BY '
-				+ sortOption.properties
-					.map(property => ({
-						column:  this.columnName(new ReflectProperty(type, '' + property as keyof T)),
-						reverse: property instanceof Reverse
-					}))
-					.filter(property => property.column)
-					.map(property => '`' + property.column + '`' + (property.reverse ? ' DESC' : ''))
-					.join(', ')
-			: ''
-		const rows = await connection.query<Entity<T>[]>(
-			'SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '`' + sql + sort + limit + offset,
-			Object.values(values)
-		)
+		const limit    = limitOption?.limit  ? ' LIMIT '  + limitOption.limit  : ''
+		const offset   = limitOption?.offset ? ' OFFSET ' + limitOption.offset : ''
+		const sort     = sortOption?.properties.length ? this.orderBy(type, sortOption) : ''
+		const query    = 'SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '`' + sql + sort + limit + offset
+		if (DEBUG) console.log(query)
+		const rows = await connection.query<Entity<T>[]>(query, Object.values(values))
 
 		return Promise.all(rows.map(row => this.valuesFromDb(row, type)))
 	}
