@@ -209,7 +209,7 @@ export class Mysql extends DataSource
 				else {
 					sql = ' = ?'
 				}
-				if ((typeof value)[0] === 'o') {
+				if (((typeof value)[0] === 'o') && !(value instanceof Date)) {
 					name = Array.isArray(value) ? 'id' : (name + '_id')
 				}
 				return '`' + depends.columnOf(name) + '`' + sql
