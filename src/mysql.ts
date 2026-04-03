@@ -102,11 +102,9 @@ export class Mysql extends DataSource
 		Object.setPrototypeOf(localSearch, type.prototype)
 		const sql      = this.propertiesToSearchSql(localSearch)
 		const [values] = await this.valuesToDb(localSearch)
-		if (DEBUG) console.log('SELECT COUNT(*) FROM `' + depends.storeOf(type) + '`' + sql, JSON.stringify(values))
-		const row = (await connection.query<{count:number}[]>(
-			'SELECT COUNT(*) `count` FROM `' + depends.storeOf(type) + '`' + sql,
-			Object.values(values)
-		))[0]
+		const query    = 'SELECT COUNT(*) `count` FROM `' + depends.storeOf(type) + '`' + sql
+		if (DEBUG) console.log(query, JSON.stringify(values))
+		const row = (await connection.query<{count:number}[]>(query, Object.values(values)))[0]
 
 		return row?.count
 	}
