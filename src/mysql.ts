@@ -74,6 +74,13 @@ export class Mysql extends DataSource
 		super()
 	}
 
+	async close()
+	{
+		if (this.connection === undefined) return
+		await this.connection.end()
+		this.connection = undefined
+	}
+
 	columnName<T extends object>(property: ReflectProperty<T>)
 	{
 		if (typeof property.name !== 'string') throw 'No column name for non-string property'
