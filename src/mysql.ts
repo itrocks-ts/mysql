@@ -192,7 +192,7 @@ export class Mysql extends DataSource
 
 	orderBy<T extends object>(type: Type<T>, sort = new Sort(sortOf(type)))
 	{
-		return ' ORDER BY ' + sort.properties
+		const orderBy = sort.properties
 			.map(property => ({
 				column:  this.columnName(new ReflectProperty(type, '' + property as keyof T)),
 				reverse: property instanceof Reverse
@@ -200,6 +200,7 @@ export class Mysql extends DataSource
 			.filter(property => property.column)
 			.map(property => '`' + property.column + '`' + (property.reverse ? ' DESC' : ''))
 			.join(', ')
+		return orderBy.length ? ' ORDER BY ' + orderBy : ''
 	}
 
 	propertiesToSearchSql(search: AnyObject)
@@ -269,6 +270,8 @@ export class Mysql extends DataSource
 
 	async readCollection<T extends object, PT extends object>(object: Entity<T>, property: keyof T, type?: Type<PT>)
 	{
+		if (!object.id) return []
+
 		type              ??= new ReflectProperty(object, property).collectionType.elementType.type as Type<PT>
 		const connection    = this.connection ?? await this.connect()
 		const propertiesSql = this.propertiesToSqlSelect(type)
@@ -297,6 +300,8 @@ export class Mysql extends DataSource
 
 	async readCollectionIds<T extends object, PT extends object>(object: Entity<T>, property: keyof T, type?: Type<PT>)
 	{
+		if (!object.id) return []
+
 		type           ??= new ReflectProperty(object, property).collectionType.elementType.type as Type<PT>
 		const connection = this.connection ?? await this.connect()
 
