@@ -319,8 +319,8 @@ export class Mysql extends DataSource
 			const joinTable = joinTableName(objectTable, propertyTable)
 			query = 'SELECT ' + propertyTable + '_id id FROM `' + joinTable + '`'
 				+ ' WHERE `' + joinTable + '`.' + objectTable + '_id = ?'
+				+ ' ORDER BY ' + propertyTable + '_id'
 		}
-		query += this.orderBy(type)
 		const rows = await connection.query<Entity[]>(query, [object.id])
 
 		return Promise.all(rows.map(row => row.id))
