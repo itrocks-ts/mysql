@@ -14,9 +14,6 @@
 		"typescript": "^6.0"
 	},
 	"description": "Transforms model objects to and from MySQL database records",
-	"devDependencies": {
-		"@types/node": "^24.10"
-	},
 	"engines": {
 		"node": ">=24"
 	},
@@ -54,5 +51,5 @@
 	"scripts": {
 		"build": "tsc"
 	},
-	"version": "0.2.9"
+	"version": "0.2.10"
 }
