@@ -20,9 +20,9 @@ import { Options }          from '@itrocks/storage'
 import { SearchType }       from '@itrocks/storage'
 import { Sort }             from '@itrocks/storage'
 import { Connection }       from 'mariadb'
-import { ConnectionConfig } from 'mariadb'
 import { createConnection } from 'mariadb'
-import { UpsertResult }     from 'mariadb'
+import { ConnectionConfig } from 'mariadb-share'
+import { UpsertResult }     from 'mariadb-share'
 
 export const DEBUG = false
 

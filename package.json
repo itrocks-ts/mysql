@@ -11,25 +11,21 @@
 		"@itrocks/sort": "latest",
 		"@itrocks/storage": "latest",
 		"mariadb": "^3.4",
-		"typescript": "~5.9"
+		"typescript": "^6.0"
 	},
 	"description": "Transforms model objects to and from MySQL database records",
 	"devDependencies": {
 		"@types/node": "^24.10"
 	},
 	"engines": {
-		"node": ">=18"
+		"node": ">=24"
 	},
-	"exports": {
-		"import": "./esm/mysql.js",
-		"require": "./cjs/mysql.js"
-	},
+	"exports": "./cjs/mysql.js",
 	"files": [
 		"LICENSE",
 		"README.md",
-		"*/*.d.ts",
-		"*/*.js",
-		"!*/esm.*"
+		"cjs",
+		"!*.map"
 	],
 	"homepage": "https://it.rocks",
 	"keywords": [
@@ -56,10 +52,7 @@
 		"url": "git+https://github.com/itrocks-ts/mysql.git"
 	},
 	"scripts": {
-		"build": "npm run build:cjs && npm run build:esm",
-		"build:cjs": "tsc -p tsconfig.cjs.json",
-		"build:esm": "tsc -p tsconfig.esm.json"
+		"build": "tsc"
 	},
-	"types": "./esm/mysql.d.ts",
-	"version": "0.2.8"
+	"version": "0.2.9"
 }
