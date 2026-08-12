@@ -10,10 +10,12 @@
 		"@itrocks/reflect": "latest",
 		"@itrocks/sort": "latest",
 		"@itrocks/storage": "latest",
-		"mariadb": "^3.4",
-		"typescript": "^6.0"
+		"mariadb": "^3.5"
 	},
 	"description": "Transforms model objects to and from MySQL database records",
+	"devDependencies": {
+		"typescript": "^7.0"
+	},
 	"engines": {
 		"node": ">=24"
 	},
@@ -51,5 +53,5 @@
 	"scripts": {
 		"build": "tsc"
 	},
-	"version": "0.2.10"
+	"version": "0.2.11"
 }

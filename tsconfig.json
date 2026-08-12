@@ -4,9 +4,6 @@
 		"forceConsistentCasingInFileNames": true,
 		"module": "nodenext",
 		"outDir": "cjs",
-		"paths": {
-			"mariadb-share": [ "../../mariadb/types/share.d.ts" ]
-		},
 		"rootDir": "src",
 		"skipLibCheck": true,
 		"sourceMap": true,
