@@ -84,6 +84,7 @@ export class Mysql extends DataSource
 	columnName<T extends object>(property: ReflectProperty<T>)
 	{
 		if (typeof property.name !== 'string') throw 'No column name for non-string property'
+		if (property.name === 'id') return 'id'
 		const propertyType = property.type
 		if (propertyType instanceof CollectionType) return
 		return depends.columnOf(this.targetName(property))
