@@ -54,7 +54,7 @@ Transforms a property value before saving to the database, e.g. for serialisatio
 - `property` ([KeyOf&lt;T&gt;](https://github.com/itrocks-ts/class-type#keyof)): The name of the property.
 - `record` ([AnyObject](https://github.com/itrocks-ts/class-type#anyobject)): The data record for MySQL writing.
   It may be partially set.
-  
+
 **Returns:**
 
 - The transformed value of `property` to assign to `record`.
