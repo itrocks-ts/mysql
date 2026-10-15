@@ -126,7 +126,7 @@ Returning `false` disables persistence for that type.
 ## Projection composition
 
 Bind these hooks before reading model metadata. The framework supplies the same public
-[`bindSqlProjection()`](https://github.com/itrocks-ts/framework/blob/master/docs/sql-projection.md)
+[`bindSqlProjection()`](https://github.com/itrocks-ts/framework/blob/main/docs/sql-projection.md)
 for bootstrap and isolated adapters. It maps names through `toColumn` and `storeOf`, and uses
 `applyTransformer` with `SQL`/`READ` and `SQL`/`SAVE`.
 
