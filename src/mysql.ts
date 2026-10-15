@@ -10,19 +10,33 @@ import { ReflectClass }          from '@itrocks/reflect'
 import { ReflectProperty }       from '@itrocks/reflect'
 import { Reverse }               from '@itrocks/sort'
 import { sortOf }                from '@itrocks/sort'
+import { Count }                 from '@itrocks/sql-build'
+import { ProjectionError }       from '@itrocks/sql-build'
+import { ProjectionOptions }     from '@itrocks/sql-build'
+import { Select }                from '@itrocks/sql-build'
+import { SqlQuery }              from '@itrocks/sql-build'
+import { SqlFunction }           from '@itrocks/sql-functions'
+import { RelationshipError }     from '@itrocks/sql-join'
+import { RelationshipGraph }     from '@itrocks/sql-join'
 import { DataSource }            from '@itrocks/storage'
 import { Entity }                from '@itrocks/storage'
-import { isIdentifier }          from '@itrocks/storage'
-import { MayEntity }             from '@itrocks/storage'
 import { Identifier }            from '@itrocks/storage'
+import { Identifiers }           from '@itrocks/storage'
+import { isIdentifier }          from '@itrocks/storage'
 import { Limit }                 from '@itrocks/storage'
+import { MayEntity }             from '@itrocks/storage'
 import { Options }               from '@itrocks/storage'
+import { ProjectionResult }      from '@itrocks/storage'
 import { SearchType }            from '@itrocks/storage'
+import { Selection }             from '@itrocks/storage'
+import { SelectionError }        from '@itrocks/storage'
+import { SelectionPath }         from '@itrocks/storage'
 import { Sort }                  from '@itrocks/storage'
-import { createConnection }      from 'mariadb'
 import { type Connection }       from 'mariadb'
 import { type ConnectionConfig } from 'mariadb'
+import { createConnection }      from 'mariadb'
 import { type UpsertResult }     from 'mariadb'
+import { hydrateProjection }     from './projection'
 
 export const DEBUG = false
 
@@ -50,6 +64,12 @@ const depends: Dependencies = {
 	storeOf:                target => typeOf(target).name.toLowerCase()
 }
 
+function graphTypes(graph: RelationshipGraph<Type, ReflectProperty<any>>): Type[]
+{
+	return [...new Set([graph.root, ...[...graph.getPaths().values()]
+		.flatMap(node => node.tableDefinition ? [node.tableDefinition] : [])])]
+}
+
 export function joinTableName(object1: string | ObjectOrType, object2: string | ObjectOrType)
 {
 	if (typeof object1 !== 'string') object1 = depends.storeOf(object1) as string
@@ -60,6 +80,34 @@ export function joinTableName(object1: string | ObjectOrType, object2: string | 
 export function mysqlDependsOn<QF extends object = object>(dependencies: Partial<Dependencies<QF>>)
 {
 	Object.assign(depends, dependencies)
+}
+
+function normalise(path: SelectionPath): string
+{
+	const segments = Array.isArray(path) ? path : typeof path === 'string' ? path.split('.') : []
+	if (!segments.length || segments.some(segment =>
+		(typeof segment !== 'string') || !segment || segment.includes('.'))) {
+		throw new SelectionError('invalid-path', String(path))
+	}
+	return segments.join('.')
+}
+
+async function selectionErrors<T>(operation: () => Promise<T>): Promise<T>
+{
+	try { return await operation() }
+	catch (cause) {
+		if (cause instanceof RelationshipError) {
+			throw new SelectionError(cause.code === 'unsupported-relationship' ? 'unsupported-selection' : cause.code,
+				cause.path, { cause })
+		}
+		if (cause instanceof ProjectionError) throw new SelectionError(cause.code, cause.path, { cause })
+		throw cause
+	}
+}
+
+function validIdentifier(value: unknown): boolean
+{
+	return isIdentifier(value) && ((typeof value !== 'number') || Number.isSafeInteger(value))
 }
 
 export class Mysql extends DataSource
@@ -104,17 +152,10 @@ export class Mysql extends DataSource
 
 	async count<T extends object>(type: Type<T>, search: SearchType<T> = {})
 	{
-		const connection = this.connection ?? await this.connect()
-
-		const localSearch = {...search}
-		Object.setPrototypeOf(localSearch, type.prototype)
-		const sql      = this.propertiesToSearchSql(localSearch)
-		const [values] = await this.valuesToDb(localSearch)
-		const query    = 'SELECT COUNT(*) `count` FROM `' + depends.storeOf(type) + '`' + sql
-		if (DEBUG) console.log(query, JSON.stringify(values))
-		const row = (await connection.query<{count:number}[]>(query, Object.values(values)))[0]
-
-		return row?.count
+		const prepared = await selectionErrors(() => this.prepareCriteria(type, search))
+		const query = await selectionErrors(async () => new Count(type, prepared.conditions).build())
+		const rows = await this.querySelection<{ count: number | bigint }>(query, prepared.types)
+		return Number(rows[0]?.count ?? 0)
 	}
 
 	async delete<T extends object>(object: Entity<T>, property: keyof Entity<T> = 'id')
@@ -204,6 +245,71 @@ export class Mysql extends DataSource
 		return orderBy.length ? ' ORDER BY ' + orderBy : ''
 	}
 
+	protected async prepareCriteria<T extends object>(type: Type<T>, search: SearchType<T>)
+	{
+		const paths = Object.keys(search)
+		const graph = new RelationshipGraph<Type, ReflectProperty<any>>(type,
+			paths.filter(path => path !== 'id').map(path => path.endsWith('.id') ? path.slice(0, -3) : path))
+		const result: Record<string, unknown> = Object.create(null)
+		for (const path of paths) {
+			const original = search[path]
+			let fn = original instanceof SqlFunction ? original : undefined
+			if (!fn && (original instanceof depends.QueryFunction)) {
+				const [value, sql] = depends.queryFunctionCall(original)
+				fn = new SqlFunction(original.constructor.name, sql, value)
+			}
+			let value = fn ? fn.value : original
+			const id = (path === 'id') || path.endsWith('.id')
+			const node = id ? undefined : graph.getPath(path)
+			if (id || node?.relationship) {
+				if ((value !== null) && (typeof value === 'object')) value = value.id
+				if ((value !== null) && !validIdentifier(value)) throw new SelectionError('conversion', path)
+			}
+			else {
+				const property = node!.definition
+				const object = Object.create(property.class.type.prototype)
+				Object.defineProperty(object, property.name, { configurable: true, value, writable: true })
+				try {
+					value = await depends.applySaveTransformer(object, property.name, {})
+					if ((value === depends.ignoreTransformedValue) || (typeof value === 'function') || Array.isArray(value)) {
+						throw new Error('Criterion conversion did not return a SQL operand')
+					}
+				}
+				catch (cause) { throw new SelectionError('conversion', path, { cause }) }
+			}
+			result[path] = fn ? new SqlFunction(fn.name, fn.sql, value) : value
+		}
+		return { conditions: result, types: graphTypes(graph) }
+	}
+
+	protected projectionOptions<T extends object>(type: Type<T>, options?: Options, legacy = false): ProjectionOptions
+	{
+		const result: ProjectionOptions = {}
+		const seen = new Set<Function>()
+		for (const option of this.options(options)) {
+			const kind = option === Sort ? Sort : option?.constructor
+			if (!legacy && seen.has(kind)) throw new SelectionError('unsupported-option')
+			seen.add(kind)
+			if (option instanceof Limit) {
+				if (legacy && !option.limit) continue
+				result.limit = option.limit
+				result.offset = option.offset
+			}
+			else if ((option === Sort) || (option instanceof Sort)) {
+				const properties = (option instanceof Sort) && option.properties.length ? option.properties : sortOf(type)
+				result.orderBy = properties.map(property => ({
+					path: String(property), descending: property instanceof Reverse
+				}))
+			}
+			else if (option instanceof Identifiers) {
+				if (!option.ids.every(validIdentifier)) throw new SelectionError('unsupported-option')
+				result.rootIds = [...new Set(option.ids)]
+			}
+			else if (!legacy) throw new SelectionError('unsupported-option')
+		}
+		return result
+	}
+
 	propertiesToSearchSql(search: AnyObject)
 	{
 		const sql = Object.entries(search)
@@ -254,6 +360,12 @@ export class Mysql extends DataSource
 		if (DEBUG) console.log(query, values)
 		const rows       = await connection.query<Entity<T>[]>(query, values)
 		return Promise.all(rows.map(row => this.valuesFromDb(row, type)))
+	}
+
+	protected async querySelection<T extends object>(query: SqlQuery, _types: readonly Type[]): Promise<T[]>
+	{
+		const connection = this.connection ?? await this.connect()
+		return connection.query<T[]>(query.sql, query.values)
 	}
 
 	async read<T extends object>(type: Type<T>, id: Identifier)
@@ -454,34 +566,39 @@ export class Mysql extends DataSource
 
 	async search<T extends object>(type: Type<T>, search: SearchType<T> = {}, options?: Options): Promise<Entity<T>[]>
 	{
-		const connection    = this.connection ?? await this.connect()
-		const propertiesSql = this.propertiesToSqlSelect(type)
+		// Full entity search retains constructor defaults, relation ids and legacy option handling.
+		const properties = [...new ReflectClass(type).properties].filter(property => this.columnName(property))
+		const columns = ['id', ...properties.map(property => {
+			const name = String(property.name)
+			return this.targetName(property) === name ? name : `${name}.id`
+		})]
+		const query = await selectionErrors(async () => new Select<Type<T>, ReflectProperty<any>>(type, columns,
+			(await this.prepareCriteria(type, search)).conditions, this.projectionOptions(type, options, true)
+		).buildProjection())
+		const rows = await this.querySelection<AnyObject>(query, graphTypes(query.graph))
+		return Promise.all(rows.map(row => {
+			const record: AnyObject = { id: row[query.rootIdentityAlias] }
+			properties.forEach((property, index) => {
+				record[this.targetName(property)] = row[query.columns[index + 1].fields[0].alias]
+			})
+			return this.valuesFromDb(record as Entity<T>, type)
+		}))
+	}
 
-		let limitOption: Limit | undefined = undefined
-		let sortOption:  Sort  | undefined = undefined
-		for (const option of this.options(options)) {
-			if (option === Sort) {
-				sortOption = new Sort(sortOf(type))
-			}
-			if (option instanceof Limit) {
-				limitOption = option
-			}
-			if (option instanceof Sort) {
-				sortOption = option.properties.length ? option : new Sort(sortOf(type))
-			}
-		}
-		const localSearch = {...search}
-		Object.setPrototypeOf(localSearch, type.prototype)
-		const sql      = this.propertiesToSearchSql(localSearch)
-		const [values] = await this.valuesToDb(localSearch)
-		const limit    = limitOption?.limit  ? ' LIMIT '  + limitOption.limit  : ''
-		const offset   = limitOption?.offset ? ' OFFSET ' + limitOption.offset : ''
-		const sort     = sortOption?.properties.length ? this.orderBy(type, sortOption) : ''
-		const query    = 'SELECT ' + propertiesSql + ' FROM `' + depends.storeOf(type) + '`' + sql + sort + limit + offset
-		if (DEBUG) console.log(query)
-		const rows = await connection.query<Entity<T>[]>(query, Object.values(values))
-
-		return Promise.all(rows.map(row => this.valuesFromDb(row, type)))
+	async select<T extends object>(
+		type: Type<T>, columns: readonly Selection[], search: SearchType<T> = {}, options?: Options
+	): Promise<ProjectionResult<T>>
+	{
+		const query = await selectionErrors(async () => new Select<Type<T>, ReflectProperty<any>>(type,
+			columns.map(selection => {
+				if ((typeof selection === 'string') || Array.isArray(selection)) return normalise(selection)
+				const description = selection as { path: SelectionPath, objectFields?: readonly SelectionPath[] }
+				return { path: normalise(description.path), objectFields: description.objectFields?.map(normalise) }
+			}), (await this.prepareCriteria(type, search)).conditions, this.projectionOptions(type, options)
+		).buildProjection())
+		const records = await this.querySelection<AnyObject>(query, graphTypes(query.graph))
+		return hydrateProjection(type, query, records, depends.applyReadTransformer,
+			depends.ignoreTransformedValue, depends.columnOf)
 	}
 
 	targetName<T extends object>(property: ReflectProperty<T>)

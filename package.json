@@ -9,6 +9,9 @@
 		"@itrocks/property-type": "latest",
 		"@itrocks/reflect": "latest",
 		"@itrocks/sort": "latest",
+		"@itrocks/sql-build": "latest",
+		"@itrocks/sql-functions": "latest",
+		"@itrocks/sql-join": "latest",
 		"@itrocks/storage": "latest",
 		"mariadb": "^3.5"
 	},
@@ -23,6 +26,7 @@
 	"files": [
 		"LICENSE",
 		"README.md",
+		"docs/dependencies.md",
 		"cjs",
 		"!*.map"
 	],
@@ -53,5 +57,5 @@
 	"scripts": {
 		"build": "tsc"
 	},
-	"version": "0.2.12"
+	"version": "0.3.0"
 }
