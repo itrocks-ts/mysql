@@ -253,6 +253,15 @@ export class Mysql extends DataSource
 		const result: Record<string, unknown> = Object.create(null)
 		for (const path of paths) {
 			const original = search[path]
+			if (Array.isArray(original)) {
+				if (original.some(Array.isArray)) throw new SelectionError('conversion', path)
+				const operands = await Promise.all(original.map(value =>
+					this.prepareCriteria(type, { [path]: value } as SearchType<T>)))
+				const values = operands.map(operand => operand.conditions[path])
+				if (values.some(value => value instanceof SqlFunction)) throw new SelectionError('conversion', path)
+				result[path] = values
+				continue
+			}
 			let fn = original instanceof SqlFunction ? original : undefined
 			if (!fn && (original instanceof depends.QueryFunction)) {
 				const [value, sql] = depends.queryFunctionCall(original)

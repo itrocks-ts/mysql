@@ -61,3 +61,9 @@ cause and property path through `SelectionError`.
 `joinTableName(first, second)` returns the sorted conventional link table name for store names or stored types/objects.
 `DEBUG` is the adapter's diagnostic logging flag. Dependency wiring through `mysqlDependsOn` is described separately
 in [dependency configuration](docs/dependencies.md).
+
+## Batched criteria
+
+An array criterion matches any supplied value through a parameterised SQL `IN` predicate. An empty array matches
+no rows. All operands are bound separately; they are never interpolated into SQL.
+Relation identity operands are validated individually before querying the database.

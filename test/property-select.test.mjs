@@ -144,3 +144,16 @@ test('unsupported adapters reject without invoking full entity search', async ()
 	}
 	await assert.rejects(() => new Unsupported().select(Invoice, ['number']), { code: 'unsupported-selection' })
 })
+
+test('batched relation identities become one parameterised IN query and reject invalid ids', async () => {
+	configure()
+	const { dao, queries } = datasource()
+	await dao.select(Invoice, ['number'], { city: [3, 4] })
+	assert.equal(queries.length, 1)
+	assert.match(queries[0].sql, /IN \(\?, \?\)/)
+	assert.deepEqual(queries[0].values, [3, 4])
+	await dao.select(Invoice, [], { city: [] })
+	assert.match(queries[1].sql, /1 = 0/)
+	await assert.rejects(dao.select(Invoice, [], { city: [3, {}] }), { code: 'conversion' })
+	assert.equal(queries.length, 2)
+})
