@@ -5,7 +5,7 @@ import test from 'node:test'
 const require = createRequire(import.meta.url)
 const { Mysql, mysqlDependsOn } = require('@itrocks/mysql')
 const { sqlBuildDependsOn } = require('@itrocks/sql-build')
-const { greater } = require('@itrocks/sql-functions')
+const { between, greater, SqlFunction } = require('@itrocks/sql-functions')
 const { sqlJoinDependsOn } = require('@itrocks/sql-join')
 const { DataSource, Identifiers, Limit, SelectionError } = require('@itrocks/storage')
 const ignored = Symbol('ignored')
@@ -90,6 +90,56 @@ test('ignored and undefined scalar and object fields have distinct loading state
 	assert.ok(Object.hasOwn(object.value, 'code'))
 	assert.deepEqual(object.loadedFields, ['id', 'code'])
 	configure()
+})
+
+test('between converts both bounds for select, count and search without mutating the criterion', async () => {
+	configure({ applySaveTransformer: async (object, name) => {
+		assert.ok(object instanceof City)
+		assert.equal(name, 'code')
+		return object[name].toLowerCase()
+	} })
+	try {
+		const { dao, queries } = datasource([])
+		const operand = between('AA', 'ZZ')
+		await dao.select(Invoice, [], { 'city.code': operand })
+		await dao.count(Invoice, { 'city.code': operand })
+		await dao.search(Invoice, { 'city.code': operand })
+		assert.deepEqual(operand.value, ['AA', 'ZZ'])
+		assert.deepEqual(queries.map(query => query.values), [['aa', 'zz'], ['aa', 'zz'], ['aa', 'zz']])
+		assert.ok(queries.every(query => query.sql.includes(' BETWEEN ? AND ?')))
+	}
+	finally { configure() }
+})
+
+test('between validates each relation identity and binds each operand separately', async () => {
+	const { dao, queries } = datasource([])
+	await dao.select(Invoice, [], { city: between({ id: 3 }, { id: 8 }) })
+	assert.deepEqual(queries[0].values, [3, 8])
+	for (const operand of [between(1, {}), between([1], 2), between(1, greater(2))]) {
+		await assert.rejects(dao.select(Invoice, [], { city: operand }), error => error instanceof SelectionError)
+	}
+	assert.equal(queries.length, 1)
+})
+
+test('custom functions supply their SQL and any number of operands for conversion', async () => {
+	class Custom extends SqlFunction
+	{
+		build()
+		{
+			return { sql: ' IN (?, ?, ?)', values: ['AA', 'BB', 'CC'] }
+		}
+	}
+	configure({ applySaveTransformer: async (object, name) => object[name].toLowerCase() })
+	try {
+		const { dao, queries } = datasource([])
+		await dao.select(Invoice, [], { 'city.code': new Custom('custom', '', undefined) })
+		assert.match(queries[0].sql, / IN \(\?, \?, \?\)/)
+		assert.deepEqual(queries[0].values, ['aa', 'bb', 'cc'])
+		await dao.count(Invoice, { 'city.code': new SqlFunction('present', ' IS NOT NULL', []) })
+		assert.match(queries[1].sql, / IS NOT NULL/)
+		assert.deepEqual(queries[1].values, [])
+	}
+	finally { configure() }
 })
 
 test('criteria use final owners and preserve trusted operators and caller inputs', async () => {

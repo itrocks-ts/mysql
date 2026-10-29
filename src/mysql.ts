@@ -15,7 +15,7 @@ import { ProjectionError }       from '@itrocks/sql-build'
 import { ProjectionOptions }     from '@itrocks/sql-build'
 import { Select }                from '@itrocks/sql-build'
 import { SqlQuery }              from '@itrocks/sql-build'
-import { SqlFunction }           from '@itrocks/sql-functions'
+import { SqlFunction }            from '@itrocks/sql-functions'
 import { RelationshipError }     from '@itrocks/sql-join'
 import { RelationshipGraph }     from '@itrocks/sql-join'
 import { DataSource }            from '@itrocks/storage'
@@ -248,35 +248,49 @@ export class Mysql extends DataSource
 	protected async prepareCriteria<T extends object>(type: Type<T>, search: SearchType<T>)
 	{
 		const paths = Object.keys(search)
-		const graph = new RelationshipGraph<Type, ReflectProperty<any>>(type,
-			paths.filter(path => path !== 'id').map(path => path.endsWith('.id') ? path.slice(0, -3) : path))
+		const graph = new RelationshipGraph<Type, ReflectProperty<any>>(
+			type, paths.filter(path => path !== 'id').map(path => path.endsWith('.id') ? path.slice(0, -3) : path)
+		)
 		const result: Record<string, unknown> = Object.create(null)
 		for (const path of paths) {
 			const original = search[path]
-			if (Array.isArray(original)) {
-				if (original.some(Array.isArray)) throw new SelectionError('conversion', path)
-				const operands = await Promise.all(original.map(value =>
-					this.prepareCriteria(type, { [path]: value } as SearchType<T>)))
-				const values = operands.map(operand => operand.conditions[path])
-				if (values.some(value => value instanceof SqlFunction)) throw new SelectionError('conversion', path)
-				result[path] = values
-				continue
-			}
-			let fn = original instanceof SqlFunction ? original : undefined
+			let   fn       = original instanceof SqlFunction ? original : undefined
 			if (!fn && (original instanceof depends.QueryFunction)) {
 				const [value, sql] = depends.queryFunctionCall(original)
 				fn = new SqlFunction(original.constructor.name, sql, value)
 			}
-			let value = fn ? fn.value : original
-			const id = (path === 'id') || path.endsWith('.id')
-			const node = id ? undefined : graph.getPath(path)
+			if (fn || Array.isArray(original)) {
+				const query = fn?.build()
+				const input: any[] = query ? query.values : original
+				if (input.some(Array.isArray)) {
+					throw new SelectionError('conversion', path)
+				}
+				const operands = await Promise.all(
+					input.map(value => this.prepareCriteria(type, { [path]: value } as SearchType<T>))
+				)
+				const values = operands.map(operand => operand.conditions[path])
+				if (values.some(value => value instanceof SqlFunction)) {
+					throw new SelectionError('conversion', path)
+				}
+				result[path] = query
+					? new SqlFunction(fn!.name, query.sql, values)
+					: values
+				continue
+			}
+			let   value = original
+			const id    = (path === 'id') || path.endsWith('.id')
+			const node  = id ? undefined : graph.getPath(path)
 			if (id || node?.relationship) {
-				if ((value !== null) && (typeof value === 'object')) value = value.id
-				if ((value !== null) && !validIdentifier(value)) throw new SelectionError('conversion', path)
+				if ((value !== null) && (typeof value === 'object')) {
+					value = value.id
+				}
+				if ((value !== null) && !validIdentifier(value)) {
+					throw new SelectionError('conversion', path)
+				}
 			}
 			else {
 				const property = node!.definition
-				const object = Object.create(property.class.type.prototype)
+				const object   = Object.create(property.class.type.prototype)
 				Object.defineProperty(object, property.name, { configurable: true, value, writable: true })
 				try {
 					value = await depends.applySaveTransformer(object, property.name, {})
@@ -286,7 +300,7 @@ export class Mysql extends DataSource
 				}
 				catch (cause) { throw new SelectionError('conversion', path, { cause }) }
 			}
-			result[path] = fn ? new SqlFunction(fn.name, fn.sql, value) : value
+			result[path] = value
 		}
 		return { conditions: result, types: graphTypes(graph) }
 	}

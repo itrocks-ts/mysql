@@ -62,7 +62,15 @@ cause and property path through `SelectionError`.
 `DEBUG` is the adapter's diagnostic logging flag. Dependency wiring through `mysqlDependsOn` is described separately
 in [dependency configuration](docs/dependencies.md).
 
-## Batched criteria
+## Search criteria
+
+Use `between(lower, upper)` from `@itrocks/sql-functions` for inclusive interval criteria, for example
+`{ year: between(2000, 2010) }`. Both bounds pass through the final property's save conversion and are bound separately.
+This works with `search()`, `select()` and `count()`, including related property paths and relation identities.
+Bounds retain their supplied order.
+
+SQL functions supply a fragment and operands through `SqlFunction.build()`. The adapter converts every operand
+using the same criterion conversion, without special cases for individual operators or their operand counts.
 
 An array criterion matches any supplied value through a parameterised SQL `IN` predicate. An empty array matches
 no rows. All operands are bound separately; they are never interpolated into SQL.
