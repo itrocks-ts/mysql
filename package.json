@@ -4,6 +4,7 @@
 		"email": "baptiste@pillot.fr"
 	},
 	"dependencies": {
+		"@itrocks/class-file": "latest",
 		"@itrocks/class-type": "latest",
 		"@itrocks/composition": "latest",
 		"@itrocks/property-type": "latest",
@@ -57,5 +58,5 @@
 	"scripts": {
 		"build": "tsc"
 	},
-	"version": "0.5.0"
+	"version": "0.5.1"
 }

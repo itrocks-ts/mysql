@@ -64,6 +64,12 @@ in [dependency configuration](docs/dependencies.md).
 
 ## Search criteria
 
+Date properties never store SQL `NULL`. Clearing a reflected Date property writes `0000-00-00`; MySQL stores the
+corresponding zero datetime when the column is a datetime. The driver reads zero dates as empty values for display.
+Date criteria using null, undefined or an empty string compare with the zero date. Date `isNull()` and `isNotNull()`
+criteria become equality and inequality against the zero date, without SQL null predicates. Other types retain their
+ordinary null semantics.
+
 Use `between(lower, upper)` from `@itrocks/sql-functions` for inclusive interval criteria, for example
 `{ year: between(2000, 2010) }`. Both bounds pass through the final property's save conversion and are bound separately.
 This works with `search()`, `select()` and `count()`, including related property paths and relation identities.

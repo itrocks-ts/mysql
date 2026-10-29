@@ -5,7 +5,7 @@ import test from 'node:test'
 const require = createRequire(import.meta.url)
 const { Mysql, mysqlDependsOn } = require('@itrocks/mysql')
 const { sqlBuildDependsOn } = require('@itrocks/sql-build')
-const { between, greater, SqlFunction } = require('@itrocks/sql-functions')
+const { between, greater, isNotNull, isNull, SqlFunction } = require('@itrocks/sql-functions')
 const { sqlJoinDependsOn } = require('@itrocks/sql-join')
 const { DataSource, Identifiers, Limit, SelectionError } = require('@itrocks/storage')
 const ignored = Symbol('ignored')
@@ -156,6 +156,25 @@ test('criteria use final owners and preserve trusted operators and caller inputs
 	assert.deepEqual(queries.map(query => query.values), [['fr'], ['fr']])
 	assert.ok(queries.every(query => query.sql.includes(' > ?')))
 	configure()
+})
+
+test('date null criteria and presence functions compare zero dates without NULL predicates', async () => {
+	const columns = definitions.get(City)
+	columns.date = { name: 'date', class: { type: City }, type: { type: Date } }
+	const { dao, queries } = datasource([])
+	for (const [criterion, operator] of [[null, '='], [undefined, '='], ['', '='],
+		[isNull(), '='], [isNotNull(), '<>']]) {
+		await dao.select(Invoice, [], { 'city.date': criterion })
+		await dao.count(Invoice, { 'city.date': criterion })
+		for (const query of queries.slice(-2)) {
+			assert.ok(query.sql.includes(` ${operator} ?`))
+			assert.doesNotMatch(query.sql, /IS (NOT )?NULL/)
+			assert.deepEqual(query.values, ['0000-00-00'])
+		}
+	}
+	await dao.count(Invoice, { 'city.name': isNull() })
+	assert.match(queries.at(-1).sql, /IS NULL/)
+	delete columns.date
 })
 
 test('validation precedes connection and conversion errors preserve path and cause', async () => {

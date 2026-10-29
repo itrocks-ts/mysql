@@ -1,3 +1,4 @@
+import { fileOf }                from '@itrocks/class-file'
 import { inherits }              from '@itrocks/class-type'
 import { isAnyFunction }         from '@itrocks/class-type'
 import { isAnyType }             from '@itrocks/class-type'
@@ -62,6 +63,12 @@ const depends: Dependencies = {
 	QueryFunction:          class {},
 	queryFunctionCall:      () => [undefined, ' = ?'],
 	storeOf:                target => typeOf(target).name.toLowerCase()
+}
+
+function dateValue(value: any)
+{
+	return value == null || value === '' || (value instanceof Date && Number.isNaN(value.getTime()))
+		? '0000-00-00' : value
 }
 
 function graphTypes(graph: RelationshipGraph<Type, ReflectProperty<any>>): Type[]
@@ -254,13 +261,19 @@ export class Mysql extends DataSource
 		const result: Record<string, unknown> = Object.create(null)
 		for (const path of paths) {
 			const original = search[path]
+			const id = (path === 'id') || path.endsWith('.id')
+			const node = id ? undefined : graph.getPath(path)
+			const date = node?.definition.type?.type === Date
 			let   fn       = original instanceof SqlFunction ? original : undefined
 			if (!fn && (original instanceof depends.QueryFunction)) {
 				const [value, sql] = depends.queryFunctionCall(original)
 				fn = new SqlFunction(original.constructor.name, sql, value)
 			}
 			if (fn || Array.isArray(original)) {
-				const query = fn?.build()
+				let query = fn?.build()
+				if (date && query && /^IS (NOT )?NULL$/i.test(query.sql.trim())) {
+					query = { sql: /NOT/i.test(query.sql) ? ' <> ?' : ' = ?', values: ['0000-00-00'] }
+				}
 				const input: any[] = query ? query.values : original
 				if (input.some(Array.isArray)) {
 					throw new SelectionError('conversion', path)
@@ -278,8 +291,6 @@ export class Mysql extends DataSource
 				continue
 			}
 			let   value = original
-			const id    = (path === 'id') || path.endsWith('.id')
-			const node  = id ? undefined : graph.getPath(path)
 			if (id || node?.relationship) {
 				if ((value !== null) && (typeof value === 'object')) {
 					value = value.id
@@ -300,7 +311,7 @@ export class Mysql extends DataSource
 				}
 				catch (cause) { throw new SelectionError('conversion', path, { cause }) }
 			}
-			result[path] = value
+			result[path] = date ? dateValue(value) : value
 		}
 		return { conditions: result, types: graphTypes(graph) }
 	}
@@ -667,6 +678,7 @@ export class Mysql extends DataSource
 	{
 		const deferred: Function[] = []
 		const record:   AnyObject  = {}
+		const properties = fileOf(object) ? new ReflectClass(object).propertyTypes : undefined
 		for (const property of Object.keys(object) as (keyof T)[]) {
 			const value = await depends.applySaveTransformer(object, property, record)
 			if (value === depends.ignoreTransformedValue) {
@@ -680,7 +692,7 @@ export class Mysql extends DataSource
 				deferred.push(value)
 				continue
 			}
-			record[depends.columnOf(property)] = value
+			record[depends.columnOf(property)] = properties?.[property]?.type === Date ? dateValue(value) : value
 		}
 		return [record, deferred]
 	}
