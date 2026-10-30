@@ -226,3 +226,17 @@ test('batched relation identities become one parameterised IN query and reject i
 	await assert.rejects(dao.select(Invoice, [], { city: [3, {}] }), { code: 'conversion' })
 	assert.equal(queries.length, 2)
 })
+
+
+test('logical groups and property functions convert every operand through its final property', async () => {
+	const { AND, OR, and, between, or } = require('@itrocks/sql-functions')
+	configure({ applySaveTransformer: (object, name) => name === 'number' ? Number(object[name]) : object[name] })
+	const { dao, queries } = datasource()
+	const criteria = { [OR]: { number: or('1', and(between('2', '3'), '4')), [AND]: { 'city.name': 'Paris' } } }
+	await dao.select(Invoice, ['number'], criteria)
+	await dao.count(Invoice, criteria)
+	assert.deepEqual(queries[0].values, [1, 2, 3, 4, 'Paris'])
+	assert.deepEqual(queries[1].values, queries[0].values)
+	assert.match(queries[0].sql, / OR /)
+	configure()
+})

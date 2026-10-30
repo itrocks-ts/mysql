@@ -81,3 +81,9 @@ using the same criterion conversion, without special cases for individual operat
 An array criterion matches any supplied value through a parameterised SQL `IN` predicate. An empty array matches
 no rows. All operands are bound separately; they are never interpolated into SQL.
 Relation identity operands are validated individually before querying the database.
+
+
+Recursive `[AND]` and `[OR]` groups and property-level `and()` / `or()` functions from
+[`@itrocks/sql-functions`](https://github.com/itrocks-ts/sql-functions#logical-conditions) work with `search()`,
+`select()` and `count()`. Every operand retains its final property's save conversion and identity validation,
+including operands inside nested comparison functions. Date null predicates keep zero-date semantics inside groups.

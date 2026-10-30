@@ -1,9 +1,9 @@
 import { fileOf }                from '@itrocks/class-file'
+import { ObjectOrType }          from '@itrocks/class-type'
+import { Type }                  from '@itrocks/class-type'
 import { inherits }              from '@itrocks/class-type'
 import { isAnyFunction }         from '@itrocks/class-type'
 import { isAnyType }             from '@itrocks/class-type'
-import { ObjectOrType }          from '@itrocks/class-type'
-import { Type }                  from '@itrocks/class-type'
 import { typeOf }                from '@itrocks/class-type'
 import { compositeOf }           from '@itrocks/composition'
 import { CollectionType }        from '@itrocks/property-type'
@@ -16,14 +16,17 @@ import { ProjectionError }       from '@itrocks/sql-build'
 import { ProjectionOptions }     from '@itrocks/sql-build'
 import { Select }                from '@itrocks/sql-build'
 import { SqlQuery }              from '@itrocks/sql-build'
+import { AND }                   from '@itrocks/sql-functions'
+import { LogicalFunction }       from '@itrocks/sql-functions'
+import { OR }                    from '@itrocks/sql-functions'
 import { SqlFunction }            from '@itrocks/sql-functions'
+import { conditionPaths }        from '@itrocks/sql-functions'
 import { RelationshipError }     from '@itrocks/sql-join'
 import { RelationshipGraph }     from '@itrocks/sql-join'
 import { DataSource }            from '@itrocks/storage'
 import { Entity }                from '@itrocks/storage'
 import { Identifier }            from '@itrocks/storage'
 import { Identifiers }           from '@itrocks/storage'
-import { isIdentifier }          from '@itrocks/storage'
 import { Limit }                 from '@itrocks/storage'
 import { MayEntity }             from '@itrocks/storage'
 import { Options }               from '@itrocks/storage'
@@ -33,9 +36,10 @@ import { Selection }             from '@itrocks/storage'
 import { SelectionError }        from '@itrocks/storage'
 import { SelectionPath }         from '@itrocks/storage'
 import { Sort }                  from '@itrocks/storage'
+import { isIdentifier }          from '@itrocks/storage'
+import { createConnection }      from 'mariadb'
 import { type Connection }       from 'mariadb'
 import { type ConnectionConfig } from 'mariadb'
-import { createConnection }      from 'mariadb'
 import { type UpsertResult }     from 'mariadb'
 import { hydrateProjection }     from './projection'
 
@@ -254,16 +258,30 @@ export class Mysql extends DataSource
 
 	protected async prepareCriteria<T extends object>(type: Type<T>, search: SearchType<T>)
 	{
-		const paths = Object.keys(search)
+		const paths = conditionPaths(search)
 		const graph = new RelationshipGraph<Type, ReflectProperty<any>>(
 			type, paths.filter(path => path !== 'id').map(path => path.endsWith('.id') ? path.slice(0, -3) : path)
 		)
-		const result: Record<string, unknown> = Object.create(null)
-		for (const path of paths) {
-			const original = search[path]
+		const result: SearchType = Object.create(null)
+		for (const key of [AND, OR] as const) {
+			const group = search[key]
+			if (group === undefined) continue
+			result[key] = Array.isArray(group)
+				? await Promise.all(group.map(async child => (await this.prepareCriteria(type, child)).conditions))
+				: (await this.prepareCriteria(type, group as SearchType<T>)).conditions
+		}
+		for (const path of Object.keys(search)) {
+			const original = (search as SearchType)[path]
 			const id = (path === 'id') || path.endsWith('.id')
 			const node = id ? undefined : graph.getPath(path)
 			const date = node?.definition.type?.type === Date
+			if (original instanceof LogicalFunction) {
+				const operands = await Promise.all(original.operands.map(
+					async value => (await this.prepareCriteria(type, { [path]: value } as SearchType<T>)).conditions[path]
+				))
+				result[path] = new LogicalFunction(original.operator, operands)
+				continue
+			}
 			let   fn       = original instanceof SqlFunction ? original : undefined
 			if (!fn && (original instanceof depends.QueryFunction)) {
 				const [value, sql] = depends.queryFunctionCall(original)
